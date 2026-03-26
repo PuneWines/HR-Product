@@ -32,6 +32,8 @@ const Dashboard = () => {
   const [leaveThisMonth, setLeaveThisMonth] = useState(0);
   const [monthlyHiringData, setMonthlyHiringData] = useState([]);
   const [designationData, setDesignationData] = useState([]);
+  const [resignations, setResignations] = useState(0);
+  const [terminations, setTerminations] = useState(0);
   
   // Mock data for other charts
   const employeeStatusData = [
@@ -72,7 +74,7 @@ const Dashboard = () => {
   const fetchJoiningCount = async () => {
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
       );
   
       if (!response.ok) {
@@ -186,7 +188,7 @@ const Dashboard = () => {
   const fetchLeaveCount = async () => {
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=LEAVING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=LEAVING&action=fetch'
       );
   
       if (!response.ok) {
@@ -224,14 +226,34 @@ const Dashboard = () => {
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
   
-      const thisMonthCount = dataRows.filter(row => {
-        const parsedDate = parseSheetDate(row[dateIndex]);
+      const thisMonthRows = dataRows.filter(row => {
+        const dateFromColD = row[3]; // Column D
+        const parsedDate = parseSheetDate(dateFromColD);
+        const planned = row[12]; // Column M
+        const actual = row[13];  // Column N
+        
         return (
           parsedDate &&
           parsedDate.getMonth() === currentMonth &&
-          parsedDate.getFullYear() === currentYear
+          parsedDate.getFullYear() === currentYear &&
+          planned && actual // Both must be not null
         );
-      }).length;
+      });
+
+      const thisMonthCount = thisMonthRows.length;
+
+      // Count resignations and terminations dynamically
+      // Column F (index 5) is Reason of Leaving
+      const resignationsCount = thisMonthRows.filter(row => 
+        row[5]?.toString().toLowerCase().includes('resignation')
+      ).length;
+
+      const terminationsCount = thisMonthRows.filter(row => 
+        row[5]?.toString().toLowerCase().includes('termination')
+      ).length;
+
+      setResignations(resignationsCount);
+      setTerminations(terminationsCount);
   
       // Count leaving by month
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -329,7 +351,6 @@ const Dashboard = () => {
           <div>
             <p className="text-sm text-gray-600 font-medium">Total Employees</p>
             <h3 className="text-2xl font-bold text-gray-800">{totalEmployee}</h3>
-            <p className="text-xs text-green-600 mt-1">+12% from last month</p>
           </div>
         </div>
 
@@ -340,7 +361,6 @@ const Dashboard = () => {
           <div>
             <p className="text-sm text-gray-600 font-medium">Active Employees</p>
             <h3 className="text-2xl font-bold text-gray-800">{activeEmployee}</h3>
-            <p className="text-xs text-green-600 mt-1">+8% from last month</p>
           </div>
         </div>
 
@@ -351,7 +371,6 @@ const Dashboard = () => {
           <div>
             <p className="text-sm text-gray-600 font-medium">On Resigned</p>
             <h3 className="text-2xl font-bold text-gray-800">{leftEmployee}</h3>
-            <p className="text-xs text-amber-600 mt-1">2 pending approvals</p>
           </div>
         </div>
 
@@ -362,7 +381,6 @@ const Dashboard = () => {
           <div>
             <p className="text-sm text-gray-600 font-medium">Left This Month</p>
             <h3 className="text-2xl font-bold text-gray-800">{leaveThisMonth}</h3>
-            <p className="text-xs text-red-600 mt-1">2 resignations, 1 termination</p>
           </div>
         </div>
       </div>

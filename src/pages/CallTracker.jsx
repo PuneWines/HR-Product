@@ -10,7 +10,7 @@ const CallTracker = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [followUpData, setFollowUpData] = useState([]);
 
-    const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     candidateSays: '',
     status: '',
@@ -60,6 +60,8 @@ const CallTracker = () => {
   const [enquiryData, setEnquiryData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [error, setError] = useState(null);
+  const [companies, setCompanies] = useState([]);
+  const [nextEmployeeId, setNextEmployeeId] = useState('');
 
   const fetchEnquiryData = async () => {
     setLoading(true);
@@ -68,30 +70,35 @@ const CallTracker = () => {
 
     try {
       const [enquiryResponse, followUpResponse] = await Promise.all([
-        fetch('https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=ENQUIRY&action=fetch'),
-        fetch('https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=Follow - Up&action=fetch')
+        fetch('https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=ENQUIRY&action=fetch'),
+        fetch('https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Follow - Up&action=fetch')
       ]);
-      
+
       if (!enquiryResponse.ok || !followUpResponse.ok) {
         throw new Error(`HTTP error! status: ${enquiryResponse.status} or ${followUpResponse.status}`);
       }
-      
+
       const [enquiryResult, followUpResult] = await Promise.all([
         enquiryResponse.json(),
         followUpResponse.json()
       ]);
-      
+
       if (!enquiryResult.success || !enquiryResult.data || enquiryResult.data.length < 7) {
         throw new Error(enquiryResult.error || 'Not enough rows in enquiry sheet data');
       }
-      
+
       // Process enquiry data
       const enquiryHeaders = enquiryResult.data[5].map(h => h.trim());
       const enquiryDataFromRow7 = enquiryResult.data.slice(6);
-      
+
       const getIndex = (headerName) => enquiryHeaders.findIndex(h => h === headerName);
-      
+
       const processedEnquiryData = enquiryDataFromRow7
+        .filter(row => {
+          const planned = row[20]; // Column U (Planned)
+          const actual = row[21];  // Column V (Actual)
+          return planned && (!actual || actual === '');
+        })
         .map(row => ({
           id: row[getIndex('Timestamp')],
           indentNo: row[getIndex('Indent Number')],
@@ -114,22 +121,22 @@ const CallTracker = () => {
           presentAddress: row[getIndex('Present Address')] || '',
           aadharNo: row[getIndex('Aadhar Number')] || ''
         }));
-      
+
       setEnquiryData(processedEnquiryData);
-      
+
       // Process follow-up data for filtering
       if (followUpResult.success && followUpResult.data) {
         const rawFollowUpData = followUpResult.data || followUpResult;
         const followUpRows = Array.isArray(rawFollowUpData[0]) ? rawFollowUpData.slice(1) : rawFollowUpData;
-        
+
         const processedFollowUpData = followUpRows.map(row => ({
           enquiryNo: row[1] || '',       // Column B (index 1) - Enquiry No
           status: row[2] || ''           // Column C (index 2) - Status
         }));
-        
+
         setFollowUpData(processedFollowUpData);
       }
-      
+
     } catch (error) {
       console.error('Error fetching data:', error);
       setError(error.message);
@@ -140,66 +147,109 @@ const CallTracker = () => {
     }
   };
 
-const fetchFollowUpData = async () => {
-  setLoading(true);
-  setTableLoading(true);
-  setError(null);
+  const fetchFollowUpData = async () => {
+    setLoading(true);
+    setTableLoading(true);
+    setError(null);
 
-  try {
-    const response = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=Follow - Up&action=fetch'
-    );
+    try {
+      const response = await fetch(
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Follow - Up&action=fetch'
+      );
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Raw API response:', result);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Google Script returned an error');
+      }
+
+      // Handle both array formats (direct data or result.data)
+      const rawData = result.data || result;
+
+      if (!Array.isArray(rawData)) {
+        throw new Error('Expected array data not received');
+      }
+
+      // Process data - skip header row if present
+      const dataRows = rawData.length > 0 && Array.isArray(rawData[0]) ? rawData.slice(1) : rawData;
+
+      const processedData = dataRows.map(row => ({
+        timestamp: row[0] || '',       // Column A (index 0) - Timestamp
+        enquiryNo: row[1] || '',       // Column B (index 1) - Enquiry No
+        status: row[2] || '',          // Column C (index 2) - Status
+        candidateSays: row[3] || '',   // Column D (index 3) - Candidates Says
+        nextDate: row[4] || ''         // Column E (index 4) - Next Date
+      }));
+
+      console.log('Processed follow-up data:', processedData);
+      setHistoryData(processedData);
+
+    } catch (error) {
+      console.error('Error in fetchFollowUpData:', error);
+      setError(error.message);
+      toast.error(`Failed to load follow-ups: ${error.message}`);
+    } finally {
+      setLoading(false);
+      setTableLoading(false);
     }
+  };
 
-    const result = await response.json();
-    console.log('Raw API response:', result);
-
-    if (!result.success) {
-      throw new Error(result.error || 'Google Script returned an error');
+  const fetchMasterData = async () => {
+    try {
+      const response = await fetch(
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Master&action=fetch'
+      );
+      const result = await response.json();
+      if (result.success && result.data) {
+        // Assume names are in column A (index 0) starting from row 2 (index 1)
+        const companyNames = result.data.slice(1).map(row => row[0]).filter(Boolean);
+        setCompanies(companyNames);
+      }
+    } catch (error) {
+      console.error('Error fetching master data:', error);
     }
+  };
 
-    // Handle both array formats (direct data or result.data)
-    const rawData = result.data || result;
-    
-    if (!Array.isArray(rawData)) {
-      throw new Error('Expected array data not received');
+  const generateNextEmployeeId = async () => {
+    try {
+      const response = await fetch(
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
+      );
+      const result = await response.json();
+      if (result.success && result.data && result.data.length > 6) {
+        const dataRows = result.data.slice(6);
+        const employeeIds = dataRows.map(row => row[1]).filter(id => id && id.startsWith('JN-'));
+
+        let maxId = 0;
+        employeeIds.forEach(id => {
+          const num = parseInt(id.replace('JN-', ''));
+          if (!isNaN(num) && num > maxId) maxId = num;
+        });
+
+        const nextNum = maxId + 1;
+        return `JN-${String(nextNum).padStart(3, '0')}`;
+      }
+      return 'JN-001';
+    } catch (error) {
+      console.error('Error generating employee ID:', error);
+      return 'JN-001';
     }
-
-    // Process data - skip header row if present
-    const dataRows = rawData.length > 0 && Array.isArray(rawData[0]) ? rawData.slice(1) : rawData;
-    
-    const processedData = dataRows.map(row => ({
-      timestamp: row[0] || '',       // Column A (index 0) - Timestamp
-      enquiryNo: row[1] || '',       // Column B (index 1) - Enquiry No
-      status: row[2] || '',          // Column C (index 2) - Status
-      candidateSays: row[3] || '',   // Column D (index 3) - Candidates Says
-      nextDate: row[4] || ''         // Column E (index 4) - Next Date
-    }));
-
-    console.log('Processed follow-up data:', processedData);
-    setHistoryData(processedData);
-    
-  } catch (error) {
-    console.error('Error in fetchFollowUpData:', error);
-    setError(error.message);
-    toast.error(`Failed to load follow-ups: ${error.message}`);
-  } finally {
-    setLoading(false);
-    setTableLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchEnquiryData();
     fetchFollowUpData();
+    fetchMasterData();
   }, []);
 
- const pendingData = enquiryData.filter(item => {
-    const hasFinalStatus = followUpData.some(followUp => 
-      followUp.enquiryNo === item.candidateEnquiryNo && 
+  const pendingData = enquiryData.filter(item => {
+    const hasFinalStatus = followUpData.some(followUp =>
+      followUp.enquiryNo === item.candidateEnquiryNo &&
       (followUp.status === 'Joining' || followUp.status === 'Reject')
     );
     return !hasFinalStatus;
@@ -234,6 +284,11 @@ const fetchFollowUpData = async () => {
   const handleFileChange = (e, fieldName) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size must be less than 5MB');
+        return;
+      }
       setJoiningFormData(prev => ({
         ...prev,
         [fieldName]: file
@@ -242,110 +297,115 @@ const fetchFollowUpData = async () => {
   };
 
   const postToJoiningSheet = async (rowData) => {
-  const URL = 'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec';
+    const URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
 
-  try {
-    console.log('Attempting to post:', {
-      sheetName: 'JOINING',
-      rowData: rowData
-    });
+    try {
+      console.log('Attempting to post:', {
+        sheetName: 'JOINING',
+        rowData: rowData
+      });
 
-    const params = new URLSearchParams();
-    params.append('sheetName', 'JOINING');
-    params.append('action', 'insert');
-    params.append('rowData', JSON.stringify(rowData));
+      const params = new URLSearchParams();
+      params.append('sheetName', 'JOINING');
+      params.append('action', 'insert');
+      params.append('rowData', JSON.stringify(rowData));
 
-    const response = await fetch(URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params,
-    });
+      const response = await fetch(URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Server response:', data);
+
+      if (!data.success) {
+        throw new Error(data.error || 'Server returned unsuccessful response');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Full error details:', {
+        error: error.message,
+        stack: error.stack,
+        rowData: rowData,
+        timestamp: new Date().toISOString()
+      });
+      throw new Error(`Failed to update sheet: ${error.message}`);
     }
+  };
 
-    const data = await response.json();
-    console.log('Server response:', data);
 
-    if (!data.success) {
-      throw new Error(data.error || 'Server returned unsuccessful response');
+  const postToSheet = async (rowData) => {
+    const URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
+
+    try {
+      console.log('Attempting to post:', {
+        sheetName: 'Follow - Up',
+        rowData: rowData
+      });
+
+      const params = new URLSearchParams();
+      params.append('sheetName', 'Follow - Up');
+      params.append('action', 'insert');
+      params.append('rowData', JSON.stringify(rowData));
+
+      const response = await fetch(URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('Server response:', data);
+
+      if (!data.success) {
+        throw new Error(data.error || 'Server returned unsuccessful response');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Full error details:', {
+        error: error.message,
+        stack: error.stack,
+        rowData: rowData,
+        timestamp: new Date().toISOString()
+      });
+      throw new Error(`Failed to update sheet: ${error.message}`);
     }
+  };
 
-    return data;
-  } catch (error) {
-    console.error('Full error details:', {
-      error: error.message,
-      stack: error.stack,
-      rowData: rowData,
-      timestamp: new Date().toISOString()
-    });
-    throw new Error(`Failed to update sheet: ${error.message}`);
-  }
-};
-
-
-const postToSheet = async (rowData) => {
-  const URL = 'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec';
-
-  try {
-    console.log('Attempting to post:', {
-      sheetName: 'Follow - Up',
-      rowData: rowData
-    });
-
-    const params = new URLSearchParams();
-    params.append('sheetName', 'Follow - Up');
-    params.append('action', 'insert');
-    params.append('rowData', JSON.stringify(rowData));
-
-    const response = await fetch(URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+  // utils/dateFormatter.js
+  const formatDateTime = (isoString) => {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) {
+      // Fallback for DD/MM/YYYY or other strings
+      return isoString;
     }
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  };
 
-    const data = await response.json();
-    console.log('Server response:', data);
-
-    if (!data.success) {
-      throw new Error(data.error || 'Server returned unsuccessful response');
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Full error details:', {
-      error: error.message,
-      stack: error.stack,
-      rowData: rowData,
-      timestamp: new Date().toISOString()
-    });
-    throw new Error(`Failed to update sheet: ${error.message}`);
-  }
-};
-
-// utils/dateFormatter.js
- const formatDateTime=(isoString)=>{
-  const d = new Date(isoString);
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
-  const hours = String(d.getHours()).padStart(2, "0");
-  const minutes = String(d.getMinutes()).padStart(2, "0");
-  return `${day}/${month}/${year} ${hours}:${minutes}`;
-}
-
- const uploadFileToDrive = async (file, folderId) => {
+  const uploadFileToDrive = async (file, folderId) => {
     try {
       // Convert file to base64
       const reader = new FileReader();
@@ -363,7 +423,7 @@ const postToSheet = async (rowData) => {
       params.append('folderId', folderId);
 
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec',
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
         {
           method: 'POST',
           headers: {
@@ -378,7 +438,7 @@ const postToSheet = async (rowData) => {
       }
 
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'File upload failed');
       }
@@ -391,85 +451,82 @@ const postToSheet = async (rowData) => {
     }
   };
 
- const formatDOB = (dateString) => {
+  const formatDOB = (dateString) => {
     if (!dateString) return '';
-    
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString; // Return as-is if not a valid date
-    }
-    
-    const day = date.getDate();
-    const month = date.getMonth();
-    const year = date.getFullYear().toString().slice(-2);
-    
-    return `${day}/${month}/${year}`;
+    if (isNaN(date.getTime())) return dateString;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setSubmitting(true);
-
-  if (!formData.candidateSays || !formData.status) {
-    toast.error('Please fill all required fields');
-    setSubmitting(false);
-    return;
-  }
-
-  try {
-    const now = new Date();
-    const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
-
-    const rowData = [
-      formattedTimestamp,
-      selectedItem.candidateEnquiryNo || '',
-      formData.status,
-      formData.candidateSays,
-      formatDOB(formData.nextDate) || '',
-    ];
-
-    // Always post to Follow-Up sheet first, regardless of status
-    await postToSheet(rowData);
-    toast.success('Update successful!');
-    
-    // If status is Joining, show the joining modal after successful submission
-    if (formData.status === 'Joining') {
-      // Pre-fill joining form with data from selectedItem
-      setJoiningFormData(prev => ({
-        ...prev,
-        dobAsPerAadhar: selectedItem.candidateDOB ? new Date(selectedItem.candidateDOB).toISOString().split('T')[0] : '',
-        gender: selectedItem.gender || '',
-        mobileNo: selectedItem.candidatePhone || '',
-        personalEmail: selectedItem.candidateEmail || '',
-        aadharCardNo: selectedItem.aadharNo || '',
-        currentAddress: selectedItem.presentAddress || '',
-        nameAsPerAadhar: selectedItem.candidateName || ''
-      }));
-      setShowModal(false);
-      setShowJoiningModal(true);
-    } else {
-      setShowModal(false);
-    }
-    
-    fetchEnquiryData();
-  } catch (error) {
-    console.error('Submission failed:', error);
-    toast.error(`Failed to update: ${error.message}`);
-    if (error.message.includes('appendRow')) {
-      toast('Please verify the "Follow-Up" sheet exists', {
-        icon: 'ℹ️',
-        duration: 8000
-      });
-    }
-  } finally {
-    setSubmitting(false);
-  }
-};
-
- const handleJoiningSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    
+
+    if (!formData.candidateSays || !formData.status) {
+      toast.error('Please fill all required fields');
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+      const rowData = [
+        formattedTimestamp,
+        selectedItem.candidateEnquiryNo || '',
+        formData.status,
+        formData.candidateSays,
+        formatDOB(formData.nextDate) || '',
+      ];
+
+      // Always post to Follow-Up sheet first, regardless of status
+      await postToSheet(rowData);
+      toast.success('Update successful!');
+
+      // If status is Joining, show the joining modal after successful submission
+      if (formData.status === 'Joining') {
+        // Pre-fill joining form with data from selectedItem
+        setJoiningFormData(prev => ({
+          ...prev,
+          dobAsPerAadhar: selectedItem.candidateDOB ? new Date(selectedItem.candidateDOB).toISOString().split('T')[0] : '',
+          gender: selectedItem.gender || '',
+          mobileNo: selectedItem.candidatePhone || '',
+          personalEmail: selectedItem.candidateEmail || '',
+          aadharCardNo: selectedItem.aadharNo || '',
+          currentAddress: selectedItem.presentAddress || '',
+          nameAsPerAadhar: selectedItem.candidateName || ''
+        }));
+        setShowModal(false);
+        const nextId = await generateNextEmployeeId();
+        setNextEmployeeId(nextId);
+        setShowJoiningModal(true);
+      } else {
+        setShowModal(false);
+      }
+
+      fetchEnquiryData();
+    } catch (error) {
+      console.error('Submission failed:', error);
+      toast.error(`Failed to update: ${error.message}`);
+      if (error.message.includes('appendRow')) {
+        toast('Please verify the "Follow-Up" sheet exists', {
+          icon: 'ℹ️',
+          duration: 8000
+        });
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleJoiningSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+
     try {
       // Upload files and get URLs
       const uploadPromises = {};
@@ -479,7 +536,8 @@ const handleSubmit = async (e) => {
         'bankPassbookPhoto',
         'qualificationPhoto',
         'salarySlip',
-        'resumeCopy'
+        'resumeCopy',
+        'candidatePhoto'
       ];
 
       const folderIds = {
@@ -488,7 +546,8 @@ const handleSubmit = async (e) => {
         bankPassbookPhoto: '19LaYkWtsRQ4sZgYiOG5CvzlIoPWJ_ER8',
         qualificationPhoto: '16EmIG-gZYAT2kRFPaINGPdj3AbP-KE-5',
         salarySlip: '13ZTy1kafDuRwlGVCjehDh6RaqslMguQi',
-        resumeCopy: '1rnJ2V4Jmy-pbjZ2qiXBugsmJ7GzypFov'
+        resumeCopy: '1rnJ2V4Jmy-pbjZ2qiXBugsmJ7GzypFov',
+        candidatePhoto: '145FIQRxwN_omuW2XPHx-Bbk8kFOpzosd'
       };
 
       for (const field of fileFields) {
@@ -501,7 +560,7 @@ const handleSubmit = async (e) => {
 
       // Wait for all uploads to complete
       const uploadedUrls = await Promise.all(
-        Object.values(uploadPromises).map(promise => 
+        Object.values(uploadPromises).map(promise =>
           promise.catch(error => {
             console.error('Upload failed:', error);
             return ''; // Return empty string if upload fails
@@ -516,14 +575,14 @@ const handleSubmit = async (e) => {
       });
 
       const now = new Date();
-      const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+      const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
       // Create an array with all column values in order
       const rowData = [];
-      
+
       // Assign values directly to array indices
       rowData[0] = formattedTimestamp;           // Timestamp
-      // rowData[1] = "employee no";                // Employee No (placeholder)
+      rowData[1] = nextEmployeeId;               // Employee No
       rowData[2] = selectedItem.indentNo;        // Indent No
       rowData[3] = selectedItem.candidateEnquiryNo || ''; // Candidate Enquiry No
       rowData[4] = joiningFormData.nameAsPerAadhar;   // Candidate Name
@@ -534,7 +593,7 @@ const handleSubmit = async (e) => {
       rowData[9] = joiningFormData.salary;        // Salary
       rowData[10] = fileUrls.aadharFrontPhoto;    // Aadhar Front Photo (Column K)
       rowData[11] = fileUrls.aadharBackPhoto;     // PAN Card Photo (Column L)
-      rowData[12] = "";                           // Candidate Photo (placeholder)
+      rowData[12] = fileUrls.candidatePhoto;      // Candidate Photo (Column M)
       rowData[13] = joiningFormData.currentAddress;  // Present Address
       rowData[14] = joiningFormData.addressAsPerAadhar; // Address as per Aadhar
       rowData[15] = formatDOB(joiningFormData.dobAsPerAadhar); // DOB as per Aadhar
@@ -562,6 +621,8 @@ const handleSubmit = async (e) => {
       rowData[37] = joiningFormData.paymentMode;   // Payment Mode
       rowData[38] = fileUrls.salarySlip;          // Salary Slip (Column AM)
       rowData[39] = fileUrls.resumeCopy;          // Resume Copy (Column AN)
+      const actualDate = new Date();
+      rowData[43] = `${actualDate.getFullYear()}-${String(actualDate.getMonth() + 1).padStart(2, '0')}-${String(actualDate.getDate()).padStart(2, '0')}`; // Actual Date (Column AR)
 
       await postToJoiningSheet(rowData);
 
@@ -581,15 +642,15 @@ const handleSubmit = async (e) => {
 
   const filteredPendingData = pendingData.filter(item => {
     const matchesSearch = item.candidateName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       item.candidateEnquiryNo?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.candidateEnquiryNo?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
   const filteredHistoryData = historyData.filter(item => {
-  const matchesSearch = item.enquiryNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                     item.candidateSays?.toLowerCase().includes(searchTerm.toLowerCase());
-  return matchesSearch;
-});
+    const matchesSearch = item.enquiryNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.candidateSays?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch;
+  });
 
   return (
     <div className="space-y-6">
@@ -618,22 +679,20 @@ const handleSubmit = async (e) => {
         <div className="border-b border-gray-300 border-opacity-20">
           <nav className="flex -mb-px">
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === 'pending'
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'pending'
                   ? 'border-indigo-500 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
               onClick={() => setActiveTab('pending')}
             >
               <Clock size={16} className="inline mr-2" />
               Pending ({filteredPendingData.length})
             </button>
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === 'history'
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'history'
                   ? 'border-indigo-500 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
               onClick={() => setActiveTab('history')}
             >
               <CheckCircle size={16} className="inline mr-2" />
@@ -675,7 +734,7 @@ const handleSubmit = async (e) => {
                     <tr>
                       <td colSpan="9" className="px-6 py-12 text-center">
                         <p className="text-red-500">Error: {error}</p>
-                        <button 
+                        <button
                           onClick={fetchEnquiryData}
                           className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
                         >
@@ -707,21 +766,20 @@ const handleSubmit = async (e) => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.candidatePhone}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.candidateEmail}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            (() => {
+                          <span className={`px-2 py-1 text-xs rounded-full ${(() => {
                               const latestFollowUp = [...followUpData].reverse().find(f => f.enquiryNo === item.candidateEnquiryNo);
                               const status = latestFollowUp ? latestFollowUp.status : 'New';
-                              return status === 'Joining' 
-                                ? 'bg-green-100 text-green-800' 
+                              return status === 'Joining'
+                                ? 'bg-green-100 text-green-800'
                                 : status === 'Reject'
-                                ? 'bg-red-100 text-red-800'
-                                : status === 'Interview'
-                                ? 'bg-purple-100 text-purple-800'
-                                : status === 'Follow-up'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-gray-100 text-gray-800';
+                                  ? 'bg-red-100 text-red-800'
+                                  : status === 'Interview'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : status === 'Follow-up'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-gray-100 text-gray-800';
                             })()
-                          }`}>
+                            }`}>
                             {(() => {
                               const latestFollowUp = [...followUpData].reverse().find(f => f.enquiryNo === item.candidateEnquiryNo);
                               return latestFollowUp ? latestFollowUp.status : 'New';
@@ -730,9 +788,9 @@ const handleSubmit = async (e) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {item.candidatePhoto ? (
-                            <a 
-                              href={item.candidatePhoto} 
-                              target="_blank" 
+                            <a
+                              href={item.candidatePhoto}
+                              target="_blank"
                               rel="noopener noreferrer"
                               className="text-indigo-600 hover:text-indigo-800"
                             >
@@ -741,17 +799,17 @@ const handleSubmit = async (e) => {
                           ) : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-  {item.candidateResume ? (
-    <a 
-      href={item.candidateResume} 
-      target="_blank" 
-      rel="noopener noreferrer"
-      className="text-indigo-600 hover:text-indigo-800"
-    >
-      View
-    </a>
-  ) : '-'}
-</td>
+                          {item.candidateResume ? (
+                            <a
+                              href={item.candidateResume}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:text-indigo-800"
+                            >
+                              View
+                            </a>
+                          ) : '-'}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -760,182 +818,176 @@ const handleSubmit = async (e) => {
             </div>
           )}
 
-         {activeTab === 'history' && (
-  <div className="overflow-x-auto">
-    <table className="min-w-full divide-y divide-gray-200">
-      <thead className="bg-gray-50">
-        <tr>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enquiry No</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Candidate Says</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Next Date</th>
-          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
-        </tr>
-      </thead>
-      <tbody className="bg-white divide-y divide-gray-200">
-        {tableLoading ? (
-          <tr>
-            <td colSpan="5" className="px-6 py-12 text-center">
-              <div className="flex justify-center flex-col items-center">
-                <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
-                <span className="text-gray-600 text-sm">Loading call history...</span>
-              </div>
-            </td>
-          </tr>
-        ) : filteredHistoryData.length === 0 ? (
-          <tr>
-            <td colSpan="5" className="px-6 py-12 text-center">
-              <p className="text-gray-500">No call history found.</p>
-            </td>
-          </tr>
-        ) : (
-          filteredHistoryData.map((item, index) => (
-            <tr key={index} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.enquiryNo}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  item.status === 'Joining' 
-                    ? 'bg-green-100 text-green-800' 
-                    : item.status === 'Reject'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {item.status}
-                </span>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.candidateSays}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.nextDate || '-'}</td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {item.timestamp || '-'}
-              </td>
-            </tr>
-          ))
-        )}
-      </tbody>
-    </table>
-  </div>
-)}
+          {activeTab === 'history' && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enquiry No</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Candidate Says</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Next Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {tableLoading ? (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-12 text-center">
+                        <div className="flex justify-center flex-col items-center">
+                          <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
+                          <span className="text-gray-600 text-sm">Loading call history...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredHistoryData.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-12 text-center">
+                        <p className="text-gray-500">No call history found.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredHistoryData.map((item, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.enquiryNo}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <span className={`px-2 py-1 text-xs rounded-full ${item.status === 'Joining'
+                              ? 'bg-green-100 text-green-800'
+                              : item.status === 'Reject'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                            {item.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.candidateSays}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.nextDate || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {item.timestamp || '-'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Call Modal */}
-{showModal && selectedItem && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
-      <div className="flex justify-between items-center p-6 border-b border-gray-300">
-        <h3 className="text-lg font-medium text-gray-900">Call Tracker</h3>
-        <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
-          <X size={20} />
-        </button>
-      </div>
-      <form onSubmit={handleSubmit} className="p-6 space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Candidate Enquiry No.</label>
-          <input
-            type="text"
-            value={selectedItem.candidateEnquiryNo}
-            disabled
-            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-700"
-          />
-        </div> 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
-          <select
-            name="status"
-            value={formData.status}
-            onChange={handleInputChange}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-            required
-          >
-            <option value="">Select Status</option>
-            <option value="Follow-up">Follow-up</option>
-            <option value="Interview">Interview</option>
-            <option value="Negotiation">Negotiation</option>
-            <option value="On Hold">On Hold</option>
-            <option value="Joining">Joining</option>
-            <option value="Reject">Reject</option>
-          </select>
-        </div>
-        
-        {/* Dynamic Label for Candidate Says Field */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            {formData.status === 'Negotiation' 
-              ? "What's Customer Requirement *" 
-              : formData.status === 'On Hold'
-              ? "Reason For Holding the Candidate *"
-              : formData.status === 'Joining'
-              ? "When the candidate will join the company *"
-              : formData.status === 'Reject'
-              ? "Reason for Rejecting the Candidate *"
-              : "What Did The Candidate Says *"}
-          </label>
-          <textarea
-            name="candidateSays"
-            value={formData.candidateSays}
-            onChange={handleInputChange}
-            rows={3}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-            required
-          />
-        </div>
-        
-        {/* Dynamic Label for Next Date Field */}
-        {formData.status && !['Joining', 'Reject'].includes(formData.status) && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {formData.status === 'Interview' 
-                ? "Schedule Date *" 
-                : formData.status === 'On Hold'
-                ? "ReCalling Date *"
-                : "Next Date *"}
-            </label>
-            <input
-              type="date"
-              name="nextDate"
-              value={formData.nextDate}
-              onChange={handleInputChange}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-              required
-            />
-          </div>
-        )}
-        
-        <div className="flex justify-end space-x-2 pt-4">
-          <button
-            type="button"
-            onClick={() => setShowModal(false)}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className={`px-4 py-2 text-white bg-indigo-700 rounded-md hover:bg-indigo-800 min-h-[42px] flex items-center justify-center ${
-              submitting ? 'opacity-90 cursor-not-allowed' : ''
-            }`}
-            disabled={submitting}
-          >
-            {submitting ? (
-              <div className="flex items-center">
-                <svg 
-                  className="animate-spin h-4 w-4 text-white mr-2" 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  fill="none" 
-                  viewBox="0 0 24 24"
-                >
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Submitting...</span>
+      {showModal && selectedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md">
+            <div className="flex justify-between items-center p-6 border-b border-gray-300">
+              <h3 className="text-lg font-medium text-gray-900">Call Tracker</h3>
+              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Candidate Enquiry No.</label>
+                <input
+                  type="text"
+                  value={selectedItem.candidateEnquiryNo}
+                  disabled
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-700"
+                />
               </div>
-            ) : 'Submit'}
-          </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  required
+                >
+                  <option value="">Select Status</option>
+                  <option value="Interview">Interview</option>
+                  <option value="Joining">Joining</option>
+                </select>
+              </div>
+
+              {/* Dynamic Label for Candidate Says Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {formData.status === 'Negotiation'
+                    ? "What's Customer Requirement *"
+                    : formData.status === 'On Hold'
+                      ? "Reason For Holding the Candidate *"
+                      : formData.status === 'Joining'
+                        ? "When the candidate will join the company *"
+                        : formData.status === 'Reject'
+                          ? "Reason for Rejecting the Candidate *"
+                          : "What Did The Candidate Says *"}
+                </label>
+                <textarea
+                  name="candidateSays"
+                  value={formData.candidateSays}
+                  onChange={handleInputChange}
+                  rows={3}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  required
+                />
+              </div>
+
+              {/* Dynamic Label for Next Date Field */}
+              {formData.status && !['Joining', 'Reject'].includes(formData.status) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {formData.status === 'Interview'
+                      ? "Schedule Date *"
+                      : formData.status === 'On Hold'
+                        ? "ReCalling Date *"
+                        : "Next Date *"}
+                  </label>
+                  <input
+                    type="date"
+                    name="nextDate"
+                    value={formData.nextDate}
+                    onChange={handleInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`px-4 py-2 text-white bg-indigo-700 rounded-md hover:bg-indigo-800 min-h-[42px] flex items-center justify-center ${submitting ? 'opacity-90 cursor-not-allowed' : ''
+                    }`}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <div className="flex items-center">
+                      <svg
+                        className="animate-spin h-4 w-4 text-white mr-2"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Submitting...</span>
+                    </div>
+                  ) : 'Submit'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </form>
-    </div>
-  </div>
-)}
+      )}
 
       {/* Joining Modal */}
       {showJoiningModal && selectedItem && (
@@ -947,532 +999,536 @@ const handleSubmit = async (e) => {
                 <X size={20} />
               </button>
             </div>
-       <form onSubmit={handleJoiningSubmit} className="p-6 space-y-6">
-  {/* Section 1: Basic Information */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
-      <input
-        type="text"
-        value={selectedItem.candidateEnquiryNo}
-        disabled
-        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Indent No</label>
-      <input
-        type="text"
-        value={selectedItem.indentNo}
-        disabled
-        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Name As Per Aadhar *</label>
-      <input
-        type="text"
-        name="nameAsPerAadhar"
-        value={joiningFormData.nameAsPerAadhar}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        required
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Father Name</label>
-      <input
-        type="text"
-        name="fatherName"
-        value={joiningFormData.fatherName}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Date Of Birth *</label>
-      <input
-        type="date"
-     name="dobAsPerAadhar"
-        value={joiningFormData.dobAsPerAadhar}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-      <select
-        name="gender"
-        value={joiningFormData.gender}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      >
-        <option value="">Select Gender</option>
-        <option value="Male">Male</option>
-        <option value="Female">Female</option>
-        <option value="Other">Other</option>
-      </select>
-    </div>
-  </div>
+            <form onSubmit={handleJoiningSubmit} className="p-6 space-y-6">
+              {/* Section 1: Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Employee ID</label>
+                  <input
+                    type="text"
+                    value={nextEmployeeId}
+                    disabled
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Indent No</label>
+                  <input
+                    type="text"
+                    value={selectedItem.indentNo}
+                    disabled
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-100 text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name As Per Aadhar *</label>
+                  <input
+                    type="text"
+                    name="nameAsPerAadhar"
+                    value={joiningFormData.nameAsPerAadhar}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Father Name</label>
+                  <input
+                    type="text"
+                    name="fatherName"
+                    value={joiningFormData.fatherName}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date Of Birth *</label>
+                  <input
+                    type="date"
+                    name="dobAsPerAadhar"
+                    value={joiningFormData.dobAsPerAadhar}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
 
-  {/* Section 2: Contact Information */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Mobile No. *</label>
-      <input
-        type="tel"
-        name="mobileNo"
-        value={joiningFormData.mobileNo}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        required
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Candidate Email *</label>
-      <input
-        type="email"
-        name="personalEmail"
-        value={joiningFormData.personalEmail}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        required
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Family Mobile Number *</label>
-      <input
-        name="familyMobileNo"
-        value={joiningFormData.familyMobileNo}
-        onChange={handleJoiningInputChange}
-      
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Relationship With Family *</label>
-      <input
-        name="relationshipWithFamily"
-        value={joiningFormData.relationshipWithFamily}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-       
-      />
-    </div>
-  </div>
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                  <select
+                    name="gender"
+                    value={joiningFormData.gender}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
 
-  {/* Section 3: Address Information */}
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Current Address *</label>
-      <textarea
-        name="currentAddress"
-        value={joiningFormData.currentAddress}
-        onChange={handleJoiningInputChange}
-        rows={3}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        required
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Address as per Aadhar *</label>
-      <textarea
-        name="addressAsPerAadhar"
-        value={joiningFormData.addressAsPerAadhar}
-        onChange={handleJoiningInputChange}
-        rows={3}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-       
-      />
-    </div>
-  </div>
+              {/* Section 2: Contact Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mobile No. *</label>
+                  <input
+                    type="tel"
+                    name="mobileNo"
+                    value={joiningFormData.mobileNo}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Candidate Email *</label>
+                  <input
+                    type="email"
+                    name="personalEmail"
+                    value={joiningFormData.personalEmail}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Family Mobile Number *</label>
+                  <input
+                    name="familyMobileNo"
+                    value={joiningFormData.familyMobileNo}
+                    onChange={handleJoiningInputChange}
 
-  {/* Section 4: Employment Details */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Date Of Joining *</label>
-      <input
-        type="date"
-        name="dateOfJoining"
-        value={joiningFormData.dateOfJoining}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-       
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Joining Place</label>
-      <input
-        type="text"
-        name="joiningPlace"
-        value={joiningFormData.joiningPlace}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Designation *</label>
-      <input
-        type="text"
-        name="designation"
-        value={joiningFormData.designation}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Salary</label>
-      <input
-        type="number"
-        name="salary"
-        value={joiningFormData.salary}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Joining Company Name *</label>
-      <input
-        name="joiningCompanyName"
-        value={joiningFormData.joiningCompanyName}
-        onChange={handleJoiningInputChange}
-        
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Attendance *</label>
-      <input
-        name="modeOfAttendance"
-        value={joiningFormData.modeOfAttendance}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-     
-      />
-    </div>
-  </div>
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Relationship With Family *</label>
+                  <input
+                    name="relationshipWithFamily"
+                    value={joiningFormData.relationshipWithFamily}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
 
-  {/* Section 5: Bank & Financial Details */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Number *</label>
-      <input
-        type="text"
-        name="aadharCardNo"
-        value={joiningFormData.aadharCardNo}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        required
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Current Account No*</label>
-      <input
-        
-        name="currentBankAc"
-        value={joiningFormData.currentBankAc}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code*</label>
-      <input
-        
-        name="ifscCode"
-        value={joiningFormData.ifscCode}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name*</label>
-      <input
-       
-        name="branchName"
-        value={joiningFormData.branchName}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode *</label>
-      <input
-        name="paymentMode"
-        value={joiningFormData.paymentMode}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-        
-      />
-    </div>
-  </div>
+                  />
+                </div>
+              </div>
 
-  {/* Section 6: Company Provisions */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Email ID to be Issue</label>
-      <select
-        name="emailToBeIssue"
-        value={joiningFormData.emailToBeIssue}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      >
-        <option value="">Select</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Issue</label>
-      <select
-        name="issueMobile"
-        value={joiningFormData.issueMobile}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      >
-        <option value="">Select</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Laptop Issue</label>
-      <select
-        name="issueLaptop"
-        value={joiningFormData.issueLaptop}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      >
-        <option value="">Select</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
-    </div>
-  </div>
+              {/* Section 3: Address Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Address *</label>
+                  <textarea
+                    name="currentAddress"
+                    value={joiningFormData.currentAddress}
+                    onChange={handleJoiningInputChange}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Address as per Aadhar *</label>
+                  <textarea
+                    name="addressAsPerAadhar"
+                    value={joiningFormData.addressAsPerAadhar}
+                    onChange={handleJoiningInputChange}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
 
-  {/* Section 7: PF/ESIC Details */}
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Past PF No(if any)</label>
-      <input
-        name="pastPfId"
-        value={joiningFormData.pastPfId}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">ESIC No (IF Any)</label>
-      <input
-        name="esicNo"
-        value={joiningFormData.esicNo}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">PF Eligible</label>
-      <select
-        name="pfEligible"
-        value={joiningFormData.pfEligible}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      >
-        <option value="">Select</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">ESIC Eligible</label>
-      <select
-        name="esicEligible"
-        value={joiningFormData.esicEligible}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      >
-        <option value="">Select</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
-      </select>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Highest Qualification</label>
-      <input
-        name="highestQualification"
-        value={joiningFormData.highestQualification}
-        onChange={handleJoiningInputChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-      />
-    </div>
-  </div>
+                  />
+                </div>
+              </div>
 
-  {/* Section 8: Document Uploads */}
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Card</label>
-      <div className="flex items-center space-x-2">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleFileChange(e, 'aadharFrontPhoto')}
-          className="hidden"
-          id="aadhar-front-upload"
-        />
-        <label
-          htmlFor="aadhar-front-upload"
-          className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload Photo
-        </label>
-        {joiningFormData.aadharFrontPhoto && (
-          <span className="text-sm text-gray-700">{joiningFormData.aadharFrontPhoto.name}</span>
-        )}
-      </div>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Pan Card</label>
-      <div className="flex items-center space-x-2">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleFileChange(e, 'aadharBackPhoto')}
-          className="hidden"
-          id="aadhar-back-upload"
-        />
-        <label
-          htmlFor="aadhar-back-upload"
-          className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload Photo
-        </label>
-        {joiningFormData.aadharBackPhoto && (
-          <span className="text-sm text-gray-700">{joiningFormData.aadharBackPhoto.name}</span>
-        )}
-      </div>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Photo Of Front Bank Passbook</label>
-      <div className="flex items-center space-x-2">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleFileChange(e, 'bankPassbookPhoto')}
-          className="hidden"
-          id="bank-passbook-upload"
-        />
-        <label
-          htmlFor="bank-passbook-upload"
-          className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload Photo
-        </label>
-        {joiningFormData.bankPassbookPhoto && (
-          <span className="text-sm text-gray-700">{joiningFormData.bankPassbookPhoto.name}</span>
-        )}
-      </div>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Qualification Photo</label>
-      <div className="flex items-center space-x-2">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleFileChange(e, 'qualificationPhoto')}
-          className="hidden"
-          id="qualification-photo-upload"
-        />
-        <label
-          htmlFor="qualification-photo-upload"
-          className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload Photo
-        </label>
-        {joiningFormData.qualificationPhoto && (
-          <span className="text-sm text-gray-700">{joiningFormData.qualificationPhoto.name}</span>
-        )}
-      </div>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Salary Slip</label>
-      <div className="flex items-center space-x-2">
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={(e) => handleFileChange(e, 'salarySlip')}
-          className="hidden"
-          id="salary-slip-upload"
-        />
-        <label
-          htmlFor="salary-slip-upload"
-          className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload Document
-        </label>
-        {joiningFormData.salarySlip && (
-          <span className="text-sm text-gray-700">{joiningFormData.salarySlip.name}</span>
-        )}
-      </div>
-    </div>
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">Upload Resume</label>
-      <div className="flex items-center space-x-2">
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={(e) => handleFileChange(e, 'resumeCopy')}
-          className="hidden"
-          id="resume-upload"
-        />
-        <label
-          htmlFor="resume-upload"
-          className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
-        >
-          <Upload size={16} className="mr-2" />
-          Upload Resume
-        </label>
-        {joiningFormData.resumeCopy && (
-          <span className="text-sm text-gray-700">{joiningFormData.resumeCopy.name}</span>
-        )}
-      </div>
-    </div>
-  </div>
+              {/* Section 4: Employment Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date Of Joining *</label>
+                  <input
+                    type="date"
+                    name="dateOfJoining"
+                    value={joiningFormData.dateOfJoining}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
 
-  {/* Form Actions */}
-  <div className="flex justify-end space-x-2 pt-4">
-    <button
-      type="button"
-      onClick={() => setShowJoiningModal(false)}
-      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-    >
-      Cancel
-    </button>
-    <button
-      type="submit"
-      className={`px-4 py-2 text-white bg-indigo-700 rounded-md hover:bg-indigo-800 flex items-center justify-center min-h-[42px] ${
-        submitting ? 'opacity-90 cursor-not-allowed' : ''
-      }`}
-      disabled={submitting}
-    >
-      {submitting ? (
-        <>
-          <svg className="animate-spin h-4 w-4 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          Submitting...
-        </>
-      ) : 'Submit'}
-    </button>
-  </div>
-</form>
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Joining Place</label>
+                  <input
+                    type="text"
+                    name="joiningPlace"
+                    value={joiningFormData.joiningPlace}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Designation *</label>
+                  <input
+                    type="text"
+                    name="designation"
+                    value={joiningFormData.designation}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Salary</label>
+                  <input
+                    type="number"
+                    name="salary"
+                    value={joiningFormData.salary}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Joining Company Name *</label>
+                  <select
+                    name="joiningCompanyName"
+                    value={joiningFormData.joiningCompanyName}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  >
+                    <option value="">Select Company</option>
+                    {companies.map((company, index) => (
+                      <option key={index} value={company}>{company}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mode of Attendance *</label>
+                  <input
+                    name="modeOfAttendance"
+                    value={joiningFormData.modeOfAttendance}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+
+                  />
+                </div>
+              </div>
+
+              {/* Section 5: Bank & Financial Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Number *</label>
+                  <input
+                    type="text"
+                    name="aadharCardNo"
+                    value={joiningFormData.aadharCardNo}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Account No*</label>
+                  <input
+
+                    name="currentBankAc"
+                    value={joiningFormData.currentBankAc}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code*</label>
+                  <input
+
+                    name="ifscCode"
+                    value={joiningFormData.ifscCode}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name*</label>
+                  <input
+
+                    name="branchName"
+                    value={joiningFormData.branchName}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode *</label>
+                  <input
+                    name="paymentMode"
+                    value={joiningFormData.paymentMode}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+
+                  />
+                </div>
+              </div>
+
+              {/* Section 6: Company Provisions */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email ID to be Issue</label>
+                  <select
+                    name="emailToBeIssue"
+                    value={joiningFormData.emailToBeIssue}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Issue</label>
+                  <select
+                    name="issueMobile"
+                    value={joiningFormData.issueMobile}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Laptop Issue</label>
+                  <select
+                    name="issueLaptop"
+                    value={joiningFormData.issueLaptop}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Section 7: PF/ESIC Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Past PF No(if any)</label>
+                  <input
+                    name="pastPfId"
+                    value={joiningFormData.pastPfId}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ESIC No (IF Any)</label>
+                  <input
+                    name="esicNo"
+                    value={joiningFormData.esicNo}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PF Eligible</label>
+                  <select
+                    name="pfEligible"
+                    value={joiningFormData.pfEligible}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ESIC Eligible</label>
+                  <select
+                    name="esicEligible"
+                    value={joiningFormData.esicEligible}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Highest Qualification</label>
+                  <input
+                    name="highestQualification"
+                    value={joiningFormData.highestQualification}
+                    onChange={handleJoiningInputChange}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                  />
+                </div>
+              </div>
+
+              {/* Section 8: Document Uploads */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Aadhar Card</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'aadharFrontPhoto')}
+                      className="hidden"
+                      id="aadhar-front-upload"
+                    />
+                    <label
+                      htmlFor="aadhar-front-upload"
+                      className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
+                    >
+                      <Upload size={16} className="mr-2" />
+                      Upload Photo
+                    </label>
+                    {joiningFormData.aadharFrontPhoto && (
+                      <span className="text-sm text-gray-700">{joiningFormData.aadharFrontPhoto.name}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Pan Card</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'aadharBackPhoto')}
+                      className="hidden"
+                      id="aadhar-back-upload"
+                    />
+                    <label
+                      htmlFor="aadhar-back-upload"
+                      className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
+                    >
+                      <Upload size={16} className="mr-2" />
+                      Upload Photo
+                    </label>
+                    {joiningFormData.aadharBackPhoto && (
+                      <span className="text-sm text-gray-700">{joiningFormData.aadharBackPhoto.name}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Photo Of Front Bank Passbook</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'bankPassbookPhoto')}
+                      className="hidden"
+                      id="bank-passbook-upload"
+                    />
+                    <label
+                      htmlFor="bank-passbook-upload"
+                      className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
+                    >
+                      <Upload size={16} className="mr-2" />
+                      Upload Photo
+                    </label>
+                    {joiningFormData.bankPassbookPhoto && (
+                      <span className="text-sm text-gray-700">{joiningFormData.bankPassbookPhoto.name}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Qualification Photo</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, 'qualificationPhoto')}
+                      className="hidden"
+                      id="qualification-photo-upload"
+                    />
+                    <label
+                      htmlFor="qualification-photo-upload"
+                      className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
+                    >
+                      <Upload size={16} className="mr-2" />
+                      Upload Photo
+                    </label>
+                    {joiningFormData.qualificationPhoto && (
+                      <span className="text-sm text-gray-700">{joiningFormData.qualificationPhoto.name}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Salary Slip</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => handleFileChange(e, 'salarySlip')}
+                      className="hidden"
+                      id="salary-slip-upload"
+                    />
+                    <label
+                      htmlFor="salary-slip-upload"
+                      className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
+                    >
+                      <Upload size={16} className="mr-2" />
+                      Upload Document
+                    </label>
+                    {joiningFormData.salarySlip && (
+                      <span className="text-sm text-gray-700">{joiningFormData.salarySlip.name}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Upload Resume</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => handleFileChange(e, 'resumeCopy')}
+                      className="hidden"
+                      id="resume-upload"
+                    />
+                    <label
+                      htmlFor="resume-upload"
+                      className="flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 text-gray-700"
+                    >
+                      <Upload size={16} className="mr-2" />
+                      Upload Resume
+                    </label>
+                    {joiningFormData.resumeCopy && (
+                      <span className="text-sm text-gray-700">{joiningFormData.resumeCopy.name}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Actions */}
+              <div className="flex justify-end space-x-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowJoiningModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`px-4 py-2 text-white bg-indigo-700 rounded-md hover:bg-indigo-800 flex items-center justify-center min-h-[42px] ${submitting ? 'opacity-90 cursor-not-allowed' : ''
+                    }`}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Submitting...
+                    </>
+                  ) : 'Submit'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

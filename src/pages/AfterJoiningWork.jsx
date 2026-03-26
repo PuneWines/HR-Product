@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Filter, Search, Clock, CheckCircle, X } from 'lucide-react';
 import useDataStore from '../store/dataStore';
-import toast from 'react-hot-toast';  
+import toast from 'react-hot-toast';
 
 const AfterJoiningWork = () => {
   const [activeTab, setActiveTab] = useState("pending");
@@ -25,6 +25,7 @@ const AfterJoiningWork = () => {
     pfEsic: false,
     companyDirectory: false,
     assets: [],
+    status: '',
   });
 
   const fetchJoiningData = async () => {
@@ -34,7 +35,7 @@ const AfterJoiningWork = () => {
 
     try {
       const response = await fetch(
-        "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch"
+        "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch"
       );
 
       if (!response.ok) {
@@ -153,14 +154,14 @@ const AfterJoiningWork = () => {
       companyDirectory: false,
       assets: [],
     });
-    
+
     setSelectedItem(item);
     setShowModal(true);
     setLoading(true);
 
     try {
       const fullDataResponse = await fetch(
-        "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch"
+        "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch"
       );
 
       if (!fullDataResponse.ok) {
@@ -190,7 +191,7 @@ const AfterJoiningWork = () => {
         (row, idx) =>
           idx > headerRowIndex &&
           row[employeeIdIndex]?.toString().trim() ===
-            item.joiningNo?.toString().trim()
+          item.joiningNo?.toString().trim()
       );
 
       if (rowIndex === -1)
@@ -239,6 +240,7 @@ const AfterJoiningWork = () => {
             ?.toString()
             .trim()
             .toLowerCase() === "yes",
+        status: allData[rowIndex][53] || '',
       };
 
       setFormData(currentValues);
@@ -271,7 +273,7 @@ const AfterJoiningWork = () => {
 
     try {
       const fullDataResponse = await fetch(
-        "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch"
+        "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch"
       );
       if (!fullDataResponse.ok) {
         throw new Error(`HTTP error! status: ${fullDataResponse.status}`);
@@ -300,15 +302,19 @@ const AfterJoiningWork = () => {
         (row, idx) =>
           idx > headerRowIndex &&
           row[employeeIdIndex]?.toString().trim() ===
-            selectedItem.joiningNo?.toString().trim()
+          selectedItem.joiningNo?.toString().trim()
       );
       if (rowIndex === -1)
         throw new Error(`Employee ${selectedItem.joiningNo} not found`);
 
       const now = new Date();
-      const formattedTimestamp = `${now.getDate()}/${
-        now.getMonth() + 1
-      }/${now.getFullYear()} `;
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const formattedTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
       const allFieldsYes =
         formData.checkSalarySlipResume &&
@@ -327,7 +333,7 @@ const AfterJoiningWork = () => {
       if (allFieldsYes) {
         updatePromises.push(
           fetch(
-            "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec",
+            "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
             {
               method: "POST",
               headers: {
@@ -354,12 +360,13 @@ const AfterJoiningWork = () => {
         { value: formData.assignAssets ? "Yes" : "No", offset: 7 },
         { value: formData.pfEsic ? "Yes" : "No", offset: 8 },
         { value: formData.companyDirectory ? "Yes" : "No", offset: 9 },
+        { value: formData.status, columnIndex: 54 }, // Column BB (54th column, 1-indexed)
       ];
 
       fields.forEach((field) => {
         updatePromises.push(
           fetch(
-            "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec",
+            "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
             {
               method: "POST",
               headers: {
@@ -369,7 +376,7 @@ const AfterJoiningWork = () => {
                 sheetName: "JOINING",
                 action: "updateCell",
                 rowIndex: (rowIndex + 1).toString(),
-                columnIndex: (startColumnIndex + field.offset + 1).toString(),
+                columnIndex: field.columnIndex ? field.columnIndex.toString() : (startColumnIndex + field.offset + 1).toString(),
                 value: field.value,
               }).toString(),
             }
@@ -413,11 +420,11 @@ const AfterJoiningWork = () => {
       return dateString;
     }
 
-    const day = date.getDate();
-    const month = date.getMonth();
-    const year = date.getFullYear().toString().slice(-2);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
 
-    return `${day}/${month}/${year}`;
+    return `${year}-${month}-${day}`;
   };
 
   const filteredPendingData = pendingData.filter((item) => {
@@ -462,22 +469,20 @@ const AfterJoiningWork = () => {
         <div className="border-b border-gray-300  ">
           <nav className="flex -mb-px">
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === "pending"
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === "pending"
                   ? "border-indigo-500 text-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+                }`}
               onClick={() => setActiveTab("pending")}
             >
               <Clock size={16} className="inline mr-2" />
               Pending ({filteredPendingData.length})
             </button>
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === "history"
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === "history"
                   ? "border-indigo-500 text-indigo-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
+                }`}
               onClick={() => setActiveTab("history")}
             >
               <CheckCircle size={16} className="inline mr-2" />
@@ -741,6 +746,23 @@ const AfterJoiningWork = () => {
                 ))}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-500 mb-1">
+                  Status *
+                </label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select Status</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+
               <div className="flex justify-end space-x-2 pt-4">
                 <button
                   type="button"
@@ -751,9 +773,8 @@ const AfterJoiningWork = () => {
                 </button>
                 <button
                   type="submit"
-                  className={`px-4 py-2 text-white bg-indigo-700 rounded-md hover:bg-indigo-800 min-h-[42px] flex items-center justify-center ${
-                    submitting ? "opacity-90 cursor-not-allowed" : ""
-                  }`}
+                  className={`px-4 py-2 text-white bg-indigo-700 rounded-md hover:bg-indigo-800 min-h-[42px] flex items-center justify-center ${submitting ? "opacity-90 cursor-not-allowed" : ""
+                    }`}
                   disabled={submitting}
                 >
                   {submitting ? (

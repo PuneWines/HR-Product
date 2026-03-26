@@ -28,7 +28,7 @@ const Leaving = () => {
 
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
       );
       
       if (!response.ok) {
@@ -95,7 +95,7 @@ const Leaving = () => {
 
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=LEAVING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=LEAVING&action=fetch'
       );
       
       if (!response.ok) {
@@ -194,17 +194,12 @@ const Leaving = () => {
 
   const formatDOB = (dateString) => {
     if (!dateString) return '';
-    
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString;
-    }
-    
-    const day = date.getDate();
-    const month = date.getMonth() + 1; // Fixed: months are 0-indexed
+    if (isNaN(date.getTime())) return dateString;
     const year = date.getFullYear();
-    
-    return `${day}/${month}/${year}`;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const handleSubmit = async(e) => {
@@ -217,7 +212,13 @@ const Leaving = () => {
     try {
       setSubmitting(true);
       const now = new Date();
-      const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} `;
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const formattedTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
       const rowData = [
         formattedTimestamp,
@@ -234,7 +235,7 @@ const Leaving = () => {
         selectedItem.salary,
       ];
 
-      const response = await fetch('https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec', {
+      const response = await fetch('https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec', {
         method: 'POST',
         body: new URLSearchParams({
           sheetName: 'LEAVING',

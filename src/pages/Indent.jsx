@@ -72,20 +72,20 @@ const generateIndentNumber = async () => {
 
   const getCurrentTimestamp = () => {
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
     const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
 
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   };
 
   const fetchIndentDataFromRow7 = async () => {
   try {
     const response = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=INDENT&action=fetch'
+      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
     );
     
     const result = await response.json();
@@ -144,7 +144,7 @@ const generateIndentNumber = async () => {
 const fetchLastIndentNumber = async () => {
   try {
     const response = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=INDENT&action=fetch'
+      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
     );
     
     const result = await response.json();
@@ -278,7 +278,7 @@ const handleSubmit = async (e) => {
         "NeedMore"
       ];
 
-      const response = await fetch('https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec', {
+      const response = await fetch('https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec', {
         method: 'POST',
         body: new URLSearchParams({
           sheetName: 'INDENT',
@@ -321,10 +321,11 @@ const handleSubmit = async (e) => {
   const formatDateForSheet = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
+    if (isNaN(date.getTime())) return dateString;
     const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const handleCancel = () => {

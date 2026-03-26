@@ -46,7 +46,7 @@ const [formData, setFormData] = useState({
     try {
       // Fetch INDENT data
       const indentResponse = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=INDENT&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
       );
       
       if (!indentResponse.ok) {
@@ -95,7 +95,7 @@ const [formData, setFormData] = useState({
 
       // Fetch ENQUIRY data
       const enquiryResponse = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=ENQUIRY&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=ENQUIRY&action=fetch'
       );
       
       if (!enquiryResponse.ok) {
@@ -190,7 +190,7 @@ const [formData, setFormData] = useState({
       const base64Data = await fileToBase64(file);
       
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec',
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
         {
           method: 'POST',
           headers: {
@@ -257,17 +257,12 @@ const [formData, setFormData] = useState({
 
   const formatDOB = (dateString) => {
     if (!dateString) return '';
-    
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString; // Return as-is if not a valid date
-    }
-    
-    const day = date.getDate();
-    const month = date.toLocaleString('default', { month: 'long' });
-    const year = date.getFullYear().toString().slice(-2);
-    
-    return `${day}-${month}-${year}`;
+    if (isNaN(date.getTime())) return dateString;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
 const handleSubmit = async (e) => {
@@ -295,7 +290,7 @@ const handleSubmit = async (e) => {
     }
 
     const now = new Date();
-    const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+    const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
     const rowData = [
       formattedTimestamp,                           // Column A: Timestamp
@@ -324,7 +319,7 @@ const handleSubmit = async (e) => {
 
     // Submit to ENQUIRY sheet
     const enquiryResponse = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec',
+      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
       {
         method: 'POST',
         headers: {
@@ -351,7 +346,7 @@ const handleSubmit = async (e) => {
       
       // Fetch INDENT data
       const indentFetchResponse = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=INDENT&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
       );
       
       const indentData = await indentFetchResponse.json();
@@ -395,7 +390,7 @@ const handleSubmit = async (e) => {
       if (statusIndex !== -1) {
         console.log('Updating Status column...');
         const statusResponse = await fetch(
-          'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec',
+          'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
           {
             method: 'POST',
             headers: {
@@ -423,7 +418,7 @@ const handleSubmit = async (e) => {
       if (actual2Index !== -1) {
         console.log('Updating Actual 2 column...');
         const actual2Response = await fetch(
-          'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec',
+          'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
           {
             method: 'POST',
             headers: {

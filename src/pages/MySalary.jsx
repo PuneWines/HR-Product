@@ -36,7 +36,7 @@ const fetchSalaryData = async () => {
     }
 
     const response = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=Salary&action=fetch'
+      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Salary&action=fetch'
     );
     
     if (!response.ok) {

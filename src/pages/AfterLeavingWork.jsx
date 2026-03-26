@@ -31,28 +31,28 @@ const AfterLeavingWork = () => {
 
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=LEAVING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=LEAVING&action=fetch'
       );
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch data from LEAVING sheet');
       }
-      
+
       const rawData = result.data || result;
-      
+
       if (!Array.isArray(rawData)) {
         throw new Error('Expected array data not received');
       }
 
       // Process data starting from row 7 (index 6) - skip headers
       const dataRows = rawData.length > 6 ? rawData.slice(6) : [];
-      
+
       const processedData = dataRows.map(row => ({
         timestamp: row[0] || '',
         employeeId: row[1] || '',
@@ -61,12 +61,12 @@ const AfterLeavingWork = () => {
         mobileNo: row[4] || '',
         reasonOfLeaving: row[5] || '',
         firmName: row[6] || '',
-        fatherName: row[7] || '', 
-        dateOfJoining: row[8] || '', 
-        workingLocation: row[9] || '', 
-        designation: row[10] || '', 
-        salary: row[11] || '', 
-        plannedDate: row[12] || '', 
+        fatherName: row[7] || '',
+        dateOfJoining: row[8] || '',
+        workingLocation: row[9] || '',
+        designation: row[10] || '',
+        salary: row[11] || '',
+        plannedDate: row[12] || '',
         actual: row[13] || ''
       }));
 
@@ -74,12 +74,12 @@ const AfterLeavingWork = () => {
         task => task.plannedDate && !task.actual
       );
       setPendingData(pendingTasks);
-      
+
       const historyTasks = processedData.filter(
         task => task.plannedDate && task.actual
       );
       setHistoryData(historyTasks);
-     
+
     } catch (error) {
       console.error('Error fetching leaving data:', error);
       setError(error.message);
@@ -107,7 +107,7 @@ const AfterLeavingWork = () => {
       finalReleaseDate: '',
       removeBenefitEnrollment: false
     });
-    
+
     setSelectedItem(item);
     setShowModal(true);
     setLoading(true);
@@ -115,13 +115,13 @@ const AfterLeavingWork = () => {
     try {
       // Fetch current values from the sheet
       const fullDataResponse = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=LEAVING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=LEAVING&action=fetch'
       );
-      
+
       if (!fullDataResponse.ok) {
         throw new Error(`HTTP error! status: ${fullDataResponse.status}`);
       }
-      
+
       const fullDataResult = await fullDataResponse.json();
       const allData = fullDataResult.data || fullDataResult;
 
@@ -144,7 +144,7 @@ const AfterLeavingWork = () => {
         idx > headerRowIndex &&
         row[employeeIdIndex]?.toString().trim() === item.employeeId?.toString().trim()
       );
-      
+
       if (rowIndex === -1) {
         throw new Error(`Employee ${item.employeeId} not found in LEAVING sheet`);
       }
@@ -152,44 +152,42 @@ const AfterLeavingWork = () => {
       // Get current values from the sheet
       // Column W is index 22 (0-based)
       const finalReleaseDateValue = allData[rowIndex][22] || "";
-      
+
       // Format the date for the input field (YYYY-MM-DD format)
       let formattedDate = "";
       if (finalReleaseDateValue) {
-        // Try to parse the date if it's in a different format
-        const dateParts = finalReleaseDateValue.toString().split('/');
-        if (dateParts.length === 3) {
-          // Assuming DD/MM/YYYY format
-          const day = dateParts[0].padStart(2, '0');
-          const month = dateParts[1].padStart(2, '0');
-          const year = dateParts[2];
-          formattedDate = `${year}-${month}-${day}`;
+        const dateObj = new Date(finalReleaseDateValue);
+        if (!isNaN(dateObj.getTime())) {
+          formattedDate = dateObj.toISOString().split('T')[0];
         } else {
-          // Try to parse as a Date object if it's in a different format
-          const dateObj = new Date(finalReleaseDateValue);
-          if (!isNaN(dateObj.getTime())) {
-            formattedDate = dateObj.toISOString().split('T')[0];
+          // Fallback for DD/MM/YYYY
+          const dateParts = finalReleaseDateValue.toString().split('/');
+          if (dateParts.length === 3) {
+            const day = dateParts[0].padStart(2, '0');
+            const month = dateParts[1].padStart(2, '0');
+            const year = dateParts[2];
+            formattedDate = `${year}-${month}-${day}`;
           }
         }
       }
 
       const currentValues = {
-        resignationLetterReceived: 
+        resignationLetterReceived:
           allData[rowIndex][15]?.toString().trim().toLowerCase() === "yes",
-        resignationAcceptance: 
+        resignationAcceptance:
           allData[rowIndex][16]?.toString().trim().toLowerCase() === "yes",
-        handoverOfAssets: 
+        handoverOfAssets:
           allData[rowIndex][17]?.toString().trim().toLowerCase() === "yes",
-        idCard: 
+        idCard:
           allData[rowIndex][18]?.toString().trim().toLowerCase() === "yes",
-        visitingCard: 
+        visitingCard:
           allData[rowIndex][19]?.toString().trim().toLowerCase() === "yes",
-        cancellationOfEmailId: 
+        cancellationOfEmailId:
           allData[rowIndex][20]?.toString().trim().toLowerCase() === "yes",
-        biometricAccess: 
+        biometricAccess:
           allData[rowIndex][21]?.toString().trim().toLowerCase() === "yes",
         finalReleaseDate: formattedDate,
-        removeBenefitEnrollment: 
+        removeBenefitEnrollment:
           allData[rowIndex][23]?.toString().trim().toLowerCase() === "yes"
       };
 
@@ -232,7 +230,7 @@ const AfterLeavingWork = () => {
     try {
       // 1. First fetch the current data
       const fullDataResponse = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=LEAVING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=LEAVING&action=fetch'
       );
       if (!fullDataResponse.ok) {
         throw new Error(`HTTP error! status: ${fullDataResponse.status}`);
@@ -263,10 +261,10 @@ const AfterLeavingWork = () => {
       if (rowIndex === -1) throw new Error(`Employee ${selectedItem.employeeId} not found in LEAVING sheet`);
 
       const now = new Date();
-      const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} `;
-      
+      const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
       // Check if all conditions are met
-      const allConditionsMet = 
+      const allConditionsMet =
         formData.resignationLetterReceived &&
         formData.resignationAcceptance &&
         formData.handoverOfAssets &&
@@ -279,27 +277,25 @@ const AfterLeavingWork = () => {
 
       const updatePromises = [];
 
-      // Only update actual date if all conditions are met
-      if (allConditionsMet) {
-        updatePromises.push(
-          fetch(
-            "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: new URLSearchParams({
-                sheetName: "LEAVING",
-                action: "updateCell",
-                rowIndex: (rowIndex + 1).toString(),
-                columnIndex: "14", // Column N (Actual date)
-                value: formattedTimestamp,
-              }).toString(),
-            }
-          )
-        );
-      }
+      // Always update actual date
+      updatePromises.push(
+        fetch(
+          "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              sheetName: "LEAVING",
+              action: "updateCell",
+              rowIndex: (rowIndex + 1).toString(),
+              columnIndex: "14", // Column N (Actual date)
+              value: formattedTimestamp,
+            }).toString(),
+          }
+        )
+      );
 
       // Update checklist columns regardless of allConditionsMet
       const fields = [
@@ -313,21 +309,12 @@ const AfterLeavingWork = () => {
         { value: formData.removeBenefitEnrollment ? "Yes" : "No", offset: 23 }
       ];
 
-      // Convert final release date to DD/MM/YYYY
-      let finalReleaseDateValue = "";
-      if (formData.finalReleaseDate) {
-        const dateParts = formData.finalReleaseDate.split('-');
-        if (dateParts.length === 3) {
-          finalReleaseDateValue = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
-        } else {
-          finalReleaseDateValue = formData.finalReleaseDate;
-        }
-      }
+      let finalReleaseDateValue = formData.finalReleaseDate || "";
 
       // Add final release date update
       updatePromises.push(
         fetch(
-          "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec",
+          "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
           {
             method: "POST",
             headers: {
@@ -348,7 +335,7 @@ const AfterLeavingWork = () => {
       fields.forEach((field) => {
         updatePromises.push(
           fetch(
-            "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec",
+            "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
             {
               method: "POST",
               headers: {
@@ -376,10 +363,10 @@ const AfterLeavingWork = () => {
       }
 
       if (allConditionsMet) {
-        toast.success("All conditions met! Actual date updated successfully.");
+        toast.success("All conditions met! Form submitted successfully.");
       } else {
         toast.success(
-          "Conditions updated successfully. Actual date will be updated when all conditions are met."
+          "Form submitted successfully. Actual date has been recorded."
         );
       }
 
@@ -396,22 +383,17 @@ const AfterLeavingWork = () => {
 
   const formatDOB = (dateString) => {
     if (!dateString) return '';
-    
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString; // Return as-is if not a valid date
-    }
-    
-    const day = date.getDate();
-    const month = date.getMonth();
+    if (isNaN(date.getTime())) return dateString;
     const year = date.getFullYear();
-    
-    return `${day}/${month}/${year}`;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const filteredPendingData = pendingData.filter(item => {
     const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
@@ -467,7 +449,7 @@ const AfterLeavingWork = () => {
                   <tr>
                     <td colSpan="7" className="px-6 py-12 text-center">
                       <p className="text-red-500">Error: {error}</p>
-                      <button 
+                      <button
                         onClick={fetchLeavingData}
                         className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
                       >
@@ -545,7 +527,7 @@ const AfterLeavingWork = () => {
 
               <div className="space-y-3">
                 <h4 className="text-md font-medium text-gray-700">Checklist Items</h4>
-                
+
                 {[
                   { key: 'resignationLetterReceived', label: 'Resignation Letter Received' },
                   { key: 'resignationAcceptance', label: 'Resignation Acceptance' },
@@ -592,17 +574,15 @@ const AfterLeavingWork = () => {
                 </button>
                 <button
                   type="submit"
-                  className={`px-4 py-2 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 min-h-[42px] flex items-center justify-center ${
-                    submitting ? 'opacity-75 cursor-not-allowed' : ''
-                  }`}
+                  className={`px-4 py-2 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 min-h-[42px] flex items-center justify-center ${submitting ? 'opacity-75 cursor-not-allowed' : ''}`}
                   disabled={submitting}
                 >
                   {submitting ? (
                     <div className="flex items-center">
-                      <svg 
-                        className="animate-spin h-4 w-4 text-white mr-2" 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        fill="none" 
+                      <svg
+                        className="animate-spin h-4 w-4 text-white mr-2"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
                         viewBox="0 0 24 24"
                       >
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

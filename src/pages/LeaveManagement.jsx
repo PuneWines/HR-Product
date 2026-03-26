@@ -35,11 +35,19 @@ const LeaveManagement = () => {
       setSelectedRow(null);
       setEditableDates({ from: '', to: '' });
     } else {
-      // Convert DD/MM/YYYY to YYYY-MM-DD for date input
       const formatForInput = (dateStr) => {
         if (!dateStr) return '';
-        const [day, month, year] = dateStr.split('/');
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+        // Fallback for DD/MM/YYYY if new Date() fails
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const [day, month, year] = parts;
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        return '';
       };
 
       setSelectedRow(rowData);
@@ -61,7 +69,7 @@ const LeaveManagement = () => {
 const fetchEmployees = async () => {
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
       );
       
       if (!response.ok) {
@@ -150,17 +158,12 @@ const fetchEmployees = async () => {
   // Format date to DD/MM/YYYY
   const formatDOB = (dateString) => {
     if (!dateString) return '';
-    
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString; // Return as-is if not a valid date
-    }
-    
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    if (isNaN(date.getTime())) return dateString;
     const year = date.getFullYear();
-    
-    return `${day}/${month}/${year}`;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   // Submit leave request
@@ -175,7 +178,7 @@ const fetchEmployees = async () => {
     try {
       setSubmitting(true);
       const now = new Date();
-      const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
       const rowData = [
         formattedTimestamp,           // Timestamp
@@ -191,7 +194,7 @@ const fetchEmployees = async () => {
         formData.designation         // Designation (Column K, index 10)
       ];
 
-      const response = await fetch('https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec', {
+      const response = await fetch('https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec', {
         method: 'POST',
         body: new URLSearchParams({
           sheetName: 'Leave Management',
@@ -239,7 +242,7 @@ const handleLeaveAction = async (action) => {
   
   try {
     const fullDataResponse = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=Leave Management&action=fetch'
+      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Leave Management&action=fetch'
     );
     
     if (!fullDataResponse.ok) {
@@ -270,20 +273,15 @@ const handleLeaveAction = async (action) => {
     let currentRow = [...allData[rowIndex]];
     
     const today = new Date();
-    const day = String(today.getDate()).padStart(2, '0');
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const year = today.getFullYear();
-    const formattedDate = `${day}/${month}/${year}`;
+    const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')} ${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}:${String(today.getSeconds()).padStart(2, '0')}`;
     
     // Update dates if they were changed
     if (editableDates.from && editableDates.from !== selectedRow.startDate) {
-      const [year, month, day] = editableDates.from.split('-');
-      currentRow[startDateIndex] = `${day}/${month}/${year}`;
+      currentRow[startDateIndex] = editableDates.from; // Already in YYYY-MM-DD from input
     }
 
     if (editableDates.to && editableDates.to !== selectedRow.endDate) {
-      const [year, month, day] = editableDates.to.split('-');
-      currentRow[endDateIndex] = `${day}/${month}/${year}`;
+      currentRow[endDateIndex] = editableDates.to; // Already in YYYY-MM-DD from input
     }
     
     currentRow[timestampIndex] = formattedDate;
@@ -299,7 +297,7 @@ const handleLeaveAction = async (action) => {
     };
 
     const response = await fetch(
-      "https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec",
+      "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
       {
         method: "POST",
         headers: {
@@ -335,7 +333,7 @@ const handleLeaveAction = async (action) => {
 
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=Leave Management&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Leave Management&action=fetch'
       );
       
       if (!response.ok) {

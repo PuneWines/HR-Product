@@ -30,7 +30,7 @@ const LeaveRequest = () => {
   const fetchEmployeeData = async () => {
   try {
     const response = await fetch(
-      'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch'
+      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
     );
     
     if (!response.ok) {
@@ -77,7 +77,7 @@ useEffect(() => {
   const fetchEmployees = async () => {
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=JOINING&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
       );
       
       if (!response.ok) {
@@ -129,14 +129,20 @@ useEffect(() => {
     let startDate, endDate;
     
     // Handle different date formats
-    if (startDateStr.includes('/')) {
+    const startObj = new Date(startDateStr);
+    if (!isNaN(startObj.getTime())) {
+      startDate = startObj;
+    } else if (startDateStr.includes('/')) {
       const [startDay, startMonth, startYear] = startDateStr.split('/').map(Number);
       startDate = new Date(startYear, startMonth - 1, startDay);
     } else {
       startDate = new Date(startDateStr);
     }
     
-    if (endDateStr.includes('/')) {
+    const endObj = new Date(endDateStr);
+    if (!isNaN(endObj.getTime())) {
+      endDate = endObj;
+    } else if (endDateStr.includes('/')) {
       const [endDay, endMonth, endYear] = endDateStr.split('/').map(Number);
       endDate = new Date(endYear, endMonth - 1, endDay);
     } else {
@@ -150,29 +156,22 @@ useEffect(() => {
 
   const formatDOB = (dateString) => {
     if (!dateString) return '';
-    
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString; // Return as-is if not a valid date
-    }
-    
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    if (isNaN(date.getTime())) return dateString;
     const year = date.getFullYear();
-    
-    return `${day}/${month}/${year}`;
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
-  // Function to parse date string in DD/MM/YYYY format
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) return date;
     
-    // Handle different date formats that might come from the API
     if (dateStr.includes('/')) {
       const [day, month, year] = dateStr.split('/').map(Number);
       return new Date(year, month - 1, day);
-    } else if (dateStr.includes('-')) {
-      return new Date(dateStr);
     }
     
     return null;
@@ -195,7 +194,7 @@ useEffect(() => {
 
     try {
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec?sheet=Leave Management&action=fetch'
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Leave Management&action=fetch'
       );
       
       if (!response.ok) {
@@ -265,7 +264,7 @@ useEffect(() => {
     try {
       setSubmitting(true);
       const now = new Date();
-      const formattedTimestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
       const rowData = [
         formattedTimestamp,           // Timestamp
@@ -281,7 +280,7 @@ useEffect(() => {
         formData.designation         // Designation (Column K, index 10)
       ];
 
-      const response = await fetch('https://script.google.com/macros/s/AKfycbyDPUX-1hkYOk0jmzncZg_RT8zsc30DSQ5-56aVQDMPvVp5heFGYbbaJnVnGdAQQyD1pg/exec', {
+      const response = await fetch('https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec', {
         method: 'POST',
         body: new URLSearchParams({
           sheetName: 'Leave Management',
