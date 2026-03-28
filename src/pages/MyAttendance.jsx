@@ -1,447 +1,306 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Clock, CheckCircle, XCircle } from 'lucide-react';
+import {
+  Calendar, Clock, CheckCircle2, XCircle, Info,
+  Search, Filter, Download, ArrowUpRight, ArrowDownRight,
+  User, Hash, Timer, Coffee, AlertCircle, FileText
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const MyAttendance = () => {
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const DUMMY_ATTENDANCE = [
+    {
+      employeeCode: 'DEMO101', employeeName: 'Sample Employee', date: '01/04/2024',
+      inTime: '09:00:00 AM', outTime: '06:00:00 PM', totalDuration: '9:00:00',
+      totalWithLunchDuration: '8:00:00', lunchTime: '1:00:00', actualTotalDuration: '8:00:00',
+      status: 'Present', missAdjustCondition: 'None', month: 'April', year: '2024'
+    },
+    {
+      employeeCode: 'DEMO101', employeeName: 'Sample Employee', date: '02/04/2024',
+      inTime: '09:15:00 AM', outTime: '06:15:00 PM', totalDuration: '9:00:00',
+      totalWithLunchDuration: '8:00:00', lunchTime: '1:00:00', actualTotalDuration: '8:00:00',
+      status: 'Present', missAdjustCondition: 'Late Entry', month: 'April', year: '2024'
+    }
+  ];
+
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
   const [attendanceData, setAttendanceData] = useState([]);
-  const [userAttendanceData, setUserAttendanceData] = useState([]);
+  const [isDemo, setIsDemo] = useState(false);
 
-  // Get username from localStorage
-  const getUsername = () => {
+  const formatSheetDate = (dateStr) => {
+    if (!dateStr || dateStr === '-') return dateStr;
     try {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        const parsedUser = JSON.parse(userData);
-        return parsedUser.username || parsedUser.Name || parsedUser.salesPersonName || '';
-      }
-      return '';
-    } catch (error) {
-      console.error('Error parsing user data from localStorage:', error);
-      return '';
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    } catch (e) {
+      return dateStr;
     }
   };
 
- const formatDOB = (dateString) => {
-    if (!dateString) return '';
-    
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return dateString; // Return as-is if not a valid date
+  const formatSheetTime = (timeStr) => {
+    if (!timeStr || timeStr === '-' || timeStr === '0.0' || timeStr === '0') return timeStr;
+    try {
+      // Handle "1899-12-30T..." or simple "09:00:00"
+      const date = new Date(timeStr.toString().includes('T') ? timeStr : `1970-01-01T${timeStr}`);
+      if (isNaN(date.getTime())) {
+        // Fallback for duration-like strings "9.30"
+        return timeStr;
+      }
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return timeStr;
     }
-    
-    const day = date.getDate();
-    const month = date.getMonth();
-    const year = date.getFullYear();
-    
-    return `${day}/${month}/${year}`;
   };
 
   const fetchDataSheet = async () => {
     setLoading(true);
-    setTableLoading(true);
     setError(null);
 
     try {
+      const userData = localStorage.getItem('user');
+      const user = userData ? JSON.parse(userData) : {};
+      const cachedId = localStorage.getItem("employeeId");
+
+      // Robust identifiers from login session
+      const identifiers = [
+        user.Username,
+        user.username,
+        user.Name,
+        user.name,
+        user.SalesPersonId,
+        user.EmployeeID,
+        user.EmpID,
+        user.id,
+        user.ID,
+        cachedId
+      ].filter(Boolean).map(id => id.toString().trim().toLowerCase());
+
+      // UPDATED SCRIPT URL AND SPREADSHEET ID
+      const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybtkq0iB4NTrw5jHcpjkwyncpLZlBGpgADUxq2nuGdX36nWlE2zum-8DBmsQgu-FzhTQ/exec';
+      const SPREADSHEET_ID = '1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8';
+
       const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Data&action=fetch'
+        `${SCRIPT_URL}?sheet=Data&action=fetch&spreadsheetId=${SPREADSHEET_ID}`
       );
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const result = await response.json();
-      console.log('Raw DATA API response:', result);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch data from DATA sheet');
-      }
+      if (!result.success) throw new Error(result.error || 'Failed to fetch attendance data');
 
       const rawData = result.data || result;
+      if (!Array.isArray(rawData)) throw new Error('Expected array data not received');
 
-      if (!Array.isArray(rawData)) {
-        throw new Error('Expected array data not received');
-      }
+      const dataRows = rawData.length > 1 ? rawData.slice(1) : [];
 
-      console.log('Raw data from sheet:', rawData);
-
-      // Find the header row (look for "Date" column)
-      let headerRowIndex = 0;
-      for (let i = 0; i < rawData.length; i++) {
-        if (rawData[i] && rawData[i].some(cell => cell && cell.toString().toLowerCase().includes('date'))) {
-          headerRowIndex = i;
-          break;
-        }
-      }
-
-      console.log('Header row index:', headerRowIndex);
-
-      // Get headers
-      const headers = rawData[headerRowIndex].map(h => h?.toString().trim() || '');
-      console.log('Headers:', headers);
-
-      // Get data rows (skip header row)
-      const dataRows = rawData.length > headerRowIndex + 1 ? rawData.slice(headerRowIndex + 1) : [];
-
-      // Map data using header names - use display values directly
-      const processedData = dataRows.map((row, index) => {
-        const obj = {};
-        headers.forEach((header, colIndex) => {
-          // Keep the exact value as it appears in the sheet
-          obj[header] = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex].toString() : '';
-        });
-        return obj;
+      const processedData = dataRows.map((row) => ({
+        employeeCode: row[0] || '',
+        employeeName: row[1] || '',
+        date: row[2] || '',
+        inTime: row[3] || '',
+        outTime: row[4] || '',
+        totalDuration: row[5] || '0',
+        totalWithLunchDuration: row[6] || '0',
+        lunchTime: row[7] || '0',
+        actualTotalDuration: row[8] || '0',
+        status: row[9] || '',
+        missAdjustCondition: row[10] || '',
+        month: row[12] || '',
+        year: row[11] || '',
+      })).filter(record => {
+        const colA = record.employeeCode.toString().trim().toLowerCase();
+        const colB = record.employeeName.toString().trim().toLowerCase();
+        return identifiers.some(id => colA === id || colB === id);
       });
 
-      console.log('Processed DATA sheet:', processedData);
-
-      // Save into state
-      setAttendanceData(processedData);
-
+      if (processedData.length > 0) {
+        setAttendanceData(processedData);
+        setIsDemo(false);
+        // Default to latest available month/year in data
+        setSelectedMonth(processedData[0].month);
+        setSelectedYear(processedData[0].year);
+      } else {
+        console.warn('No matching attendance records found for logged in user.');
+        setAttendanceData(DUMMY_ATTENDANCE);
+        setIsDemo(true);
+        setSelectedMonth('April');
+        setSelectedYear('2024');
+      }
     } catch (error) {
-      console.error('Error fetching DATA sheet:', error);
+      console.error('Error fetching data:', error);
       setError(error.message);
+      setAttendanceData(DUMMY_ATTENDANCE);
+      setIsDemo(true);
+      setSelectedMonth('April');
+      setSelectedYear('2024');
     } finally {
       setLoading(false);
-      setTableLoading(false);
     }
   };
-
-  // Filter attendance data for current user
-  useEffect(() => {
-    const username = getUsername();
-    if (username && attendanceData.length > 0) {
-      console.log('Filtering for username:', username);
-      
-      // Filter data to only show records where the name matches the username
-      const filteredData = attendanceData.filter(record => {
-        // Check all string values in the record for the username
-        for (const key in record) {
-          if (typeof record[key] === 'string' && 
-              record[key].toLowerCase().includes(username.toLowerCase())) {
-            return true;
-          }
-        }
-        return false;
-      });
-      
-      setUserAttendanceData(filteredData);
-      console.log('Filtered attendance data:', filteredData);
-    }
-  }, [attendanceData]);
 
   useEffect(() => {
     fetchDataSheet();
   }, []);
 
-  // Filter attendance by selected month and year from user-specific data
-  const filteredAttendance = userAttendanceData.filter(record => {
-    const dateValue = record.Date || record.date;
-    if (!dateValue) return false;
-    
-    try {
-      // Try to parse various date formats
-      let recordDate;
-      if (dateValue.includes('-')) {
-        // Format: YYYY-MM-DD or similar
-        const [year, month, day] = dateValue.split('-').map(Number);
-        recordDate = new Date(year, month - 1, day);
-      } else if (dateValue.includes('/')) {
-        // Format: MM/DD/YYYY or similar
-        const [month, day, year] = dateValue.split('/').map(Number);
-        recordDate = new Date(year, month - 1, day);
-      } else {
-        return true; // Show records with unknown date formats
-      }
-      
-      return recordDate.getMonth() === selectedMonth && recordDate.getFullYear() === selectedYear;
-    } catch (error) {
-      console.error('Error parsing date:', dateValue, error);
-      return true; // Show records even if date parsing fails
-    }
-  });
+  const filteredAttendance = attendanceData.filter(record =>
+    (selectedMonth === '' || record.month.toString().toLowerCase() === selectedMonth.toLowerCase()) &&
+    (selectedYear === '' || record.year.toString() === selectedYear.toString())
+  );
 
-  // Calculate statistics
   const totalDays = filteredAttendance.length;
-  const presentDays = filteredAttendance.filter(record => 
-    (record.In && record.In !== '' && record.In !== '-') || 
-    (record.inTime && record.inTime !== '' && record.inTime !== '-')
-  ).length;
-  
+  const presentDays = filteredAttendance.filter(r => r.status.trim().toLowerCase() === 'present').length;
   const absentDays = totalDays - presentDays;
-  
-  // Calculate working hours based on time strings
-  const totalWorkingHours = filteredAttendance.reduce((sum, record) => {
-    if (record.In && record.Out) {
-      try {
-        const inTime = parseTimeString(record.In);
-        const outTime = parseTimeString(record.Out);
-        
-        if (inTime && outTime) {
-          let hours = (outTime - inTime) / (1000 * 60 * 60);
-          // Handle cases where out time might be next day (e.g., working past midnight)
-          if (hours < 0) hours += 24;
-          return sum + (hours > 0 ? hours : 0);
-        }
-      } catch (e) {
-        console.log('Could not calculate hours from In/Out times:', e);
-      }
-    }
-    return sum;
-  }, 0);
-  
-  // Calculate overtime (assuming working hours > 8 is overtime)
-  const totalOvertime = filteredAttendance.reduce((sum, record) => {
-    if (record.In && record.Out) {
-      try {
-        const inTime = parseTimeString(record.In);
-        const outTime = parseTimeString(record.Out);
-        
-        if (inTime && outTime) {
-          let hours = (outTime - inTime) / (1000 * 60 * 60);
-          if (hours < 0) hours += 24;
-          return sum + Math.max(0, hours - 8);
-        }
-      } catch (e) {
-        console.log('Could not calculate overtime from In/Out times');
-      }
-    }
-    return sum;
+  const totalHours = filteredAttendance.reduce((sum, r) => {
+    const val = r.actualTotalDuration.toString().replace(/:/g, '.');
+    return sum + (parseFloat(val) || 0);
   }, 0);
 
-  // Helper function to parse time strings like "10:00:00 AM"
-  const parseTimeString = (timeStr) => {
-    if (!timeStr) return null;
-    
-    let cleanTime = timeStr.toString().trim();
-    
-    // Handle AM/PM format
-    let isPM = false;
-    if (cleanTime.toLowerCase().includes('pm')) {
-      isPM = true;
-      cleanTime = cleanTime.toLowerCase().replace('pm', '').trim();
-    } else if (cleanTime.toLowerCase().includes('am')) {
-      cleanTime = cleanTime.toLowerCase().replace('am', '').trim();
-    }
-    
-    // Split by colon
-    const parts = cleanTime.split(':');
-    if (parts.length < 2) return null;
-    
-    let hours = parseInt(parts[0], 10);
-    const minutes = parseInt(parts[1], 10);
-    const seconds = parts.length > 2 ? parseInt(parts[2], 10) : 0;
-    
-    // Adjust for PM
-    if (isPM && hours < 12) hours += 12;
-    if (!isPM && hours === 12) hours = 0; // 12 AM = 0 hours
-    
-    // Create a date object with fixed date and the parsed time
-    return new Date(2000, 0, 1, hours, minutes, seconds);
-  };
+  const months = [...new Set(attendanceData.map(r => r.month))].filter(Boolean);
+  const years = [...new Set(attendanceData.map(r => r.year))].filter(Boolean);
 
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
-  const years = [2023, 2024, 2025];
-
-  // Determine status based on In time presence
-  const getStatus = (record) => {
-    if ((record.In && record.In !== '' && record.In !== '-') || 
-        (record.inTime && record.inTime !== '' && record.inTime !== '-')) {
-      return 'Present';
-    }
-    return 'Absent';
-  };
+  const StatCard = ({ title, value, icon: Icon, colorClass }) => (
+    <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-100 transition-all hover:-translate-y-1">
+      <div className="flex items-center gap-4">
+        <div className={`p-3 rounded-2xl ${colorClass} shadow-lg`}>
+          <Icon size={24} className="text-white" />
+        </div>
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{title}</p>
+          <h3 className="text-2xl font-black text-gray-900 mt-1">{value}</h3>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="space-y-6 page-content p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">My Attendance</h1>
-      </div>
+    <div className="max-w-7xl mx-auto space-y-8 p-4 md:p-8 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">My Attendance</h1>
+            {isDemo && (
+              <span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-200 animate-pulse">
+                Demo Mode
+              </span>
+            )}
+          </div>
+          <p className="text-gray-500 mt-1 flex items-center gap-2">
+            <Timer size={16} className="text-indigo-500" />
+            Showing records for logged-in user.
+          </p>
+        </div>
 
-      {/* Filter Section */}
-      <div className="bg-white p-4 rounded-lg shadow border flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0 md:space-x-4">
-        <div className="flex items-center space-x-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {months.map((month, index) => (
-                <option key={index} value={index}>{month}</option>
-              ))}
-            </select>
+        <div className="flex flex-wrap items-center gap-4 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 px-2 border-r border-gray-100 mr-2">
+            <Filter size={16} className="text-indigo-400" />
+            <span className="text-xs font-bold text-gray-400 uppercase">Filters</span>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {years.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-transparent text-sm font-bold text-gray-700 focus:outline-none cursor-pointer"
+          >
+            <option value="">All Months</option>
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="bg-transparent text-sm font-bold text-gray-700 focus:outline-none cursor-pointer border-l border-gray-100 pl-4"
+          >
+            <option value="">All Years</option>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
         </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <div className="bg-white rounded-xl shadow-lg border p-6">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-blue-100 mr-4">
-              <Calendar size={24} className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Total Days</p>
-              <h3 className="text-2xl font-bold text-gray-800">{totalDays}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg border p-6">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-green-100 mr-4">
-              <CheckCircle size={24} className="text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Present Days</p>
-              <h3 className="text-2xl font-bold text-gray-800">{presentDays}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg border p-6">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-red-100 mr-4">
-              <XCircle size={24} className="text-red-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Absent Days</p>
-              <h3 className="text-2xl font-bold text-gray-800">{absentDays}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg border p-6">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-indigo-100 mr-4">
-              <Clock size={24} className="text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Working Hours</p>
-              <h3 className="text-2xl font-bold text-gray-800">{totalWorkingHours.toFixed(1)}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-lg border p-6">
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-amber-100 mr-4">
-              <Clock size={24} className="text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Overtime Hours</p>
-              <h3 className="text-2xl font-bold text-gray-800">{totalOvertime.toFixed(1)}</h3>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Present Days" value={presentDays} icon={CheckCircle2} colorClass="bg-green-500" />
+        <StatCard title="Absent Days" value={absentDays} icon={XCircle} colorClass="bg-red-500" />
+        <StatCard title="Total Duration" value={totalHours.toFixed(2)} icon={Clock} colorClass="bg-indigo-500" />
+        <StatCard title="Total Records" value={totalDays} icon={FileText} colorClass="bg-blue-500" />
       </div>
 
-      {/* Attendance Table */}
-      <div className="bg-white rounded-lg shadow border overflow-hidden">
-        <div className="p-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">
-            Attendance Records - {months[selectedMonth]} {selectedYear}
+      <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+        <div className="px-8 py-6 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+          <h2 className="text-xl font-bold text-gray-800">
+            Attendance Records - {selectedMonth || 'All'} {selectedYear || 'Time'}
           </h2>
-          {loading ? (
-            <div className="px-6 py-12 text-center">
-              <p className="text-gray-500">Loading attendance data...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check In</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check Out</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Working Hours</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overtime</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredAttendance.map((record, index) => {
-                    const status = getStatus(record);
-                    let workingHours = 0;
-                    let overtime = 0;
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+            <Calendar size={14} className="text-indigo-500" />
+            Sheet Data: A2:J
+          </div>
+        </div>
 
-                    if (record.In && record.Out) {
-                      try {
-                        const inTime = parseTimeString(record.In);
-                        const outTime = parseTimeString(record.Out);
-                        
-                        if (inTime && outTime) {
-                          workingHours = (outTime - inTime) / (1000 * 60 * 60);
-                          if (workingHours < 0) workingHours += 24;
-                          workingHours = workingHours > 0 ? workingHours : 0;
-                          overtime = Math.max(0, workingHours - 8);
-                        }
-                      } catch (e) {
-                        console.log('Could not calculate hours from In/Out times');
-                      }
-                    }
-
-                    return (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatDOB(record.Date) ||formatDOB(record.date) || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {record.In || record.inTime || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {record.Out || record.outTime || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            status === 'Present' 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {workingHours.toFixed(1)} hrs
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {overtime.toFixed(1)} hrs
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filteredAttendance.length === 0 && !loading && (
-                <div className="px-6 py-12 text-center">
-                  <p className="text-gray-500">No attendance records found for the selected period.</p>
-                </div>
-              )}
-            </div>
-          )}
+        <div className="overflow-auto max-h-[60vh]">
+          <table className="w-full text-left border-collapse relative">
+            <thead className="sticky top-0 z-20 bg-white shadow-sm ring-1 ring-gray-100">
+              <tr className="bg-white text-gray-400 uppercase text-[10px] font-black tracking-widest">
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Emp Code</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Emp Name</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Date</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 text-green-600 whitespace-nowrap">IN Time</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 text-red-600 whitespace-nowrap">OUT Time</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Total Duration</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Total With Lunch Duration</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Lunch Time</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 text-indigo-600 whitespace-nowrap">Actual</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                <tr>
+                  <td colSpan="11" className="px-8 py-20 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-gray-500 font-medium font-bold">Matching User ID...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredAttendance.length === 0 ? (
+                <tr>
+                  <td colSpan="11" className="px-8 py-20 text-center">
+                    <div className="flex flex-col items-center gap-4">
+                      <AlertCircle size={40} className="text-gray-200" />
+                      <p className="text-gray-500 font-medium">No records found for your ID in this period.</p>
+                      <button onClick={fetchDataSheet} className="text-xs font-black text-indigo-600 hover:underline">RETRY SYNC</button>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredAttendance.map((record, index) => (
+                <tr key={index} className="group hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-5 text-sm font-bold text-gray-900">{record.employeeCode}</td>
+                  <td className="px-6 py-5 text-sm font-medium text-gray-700">{record.employeeName}</td>
+                  <td className="px-6 py-5 text-sm text-gray-500 font-bold">{formatSheetDate(record.date)}</td>
+                  <td className="px-6 py-5 text-sm text-green-600 font-bold">{formatSheetTime(record.inTime)}</td>
+                  <td className="px-6 py-5 text-sm text-red-600 font-bold">{formatSheetTime(record.outTime)}</td>
+                  <td className="px-6 py-5 text-sm text-gray-500 font-medium">{formatSheetTime(record.totalDuration)}</td>
+                  <td className="px-6 py-5 text-sm text-gray-500 font-medium">{formatSheetTime(record.totalWithLunchDuration)}</td>
+                  <td className="px-6 py-5 text-xs text-amber-600 font-bold flex items-center gap-1 mt-4">
+                    <Coffee size={12} /> {formatSheetTime(record.lunchTime)}
+                  </td>
+                  <td className="px-6 py-5 text-sm font-black text-indigo-600">{formatSheetTime(record.actualTotalDuration)}</td>
+                  <td className="px-6 py-5">
+                    <span className={`px-3 py-1 text-[10px] font-black uppercase rounded-full ${record.status.trim().toLowerCase() === 'present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                      {record.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

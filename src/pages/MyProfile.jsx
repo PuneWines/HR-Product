@@ -1,102 +1,127 @@
-import React, { useEffect, useState } from 'react';
-import { User, Mail, Phone, MapPin, Calendar, Building, Edit3, Save, X } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { 
+  User, Mail, Phone, MapPin, Calendar, Building, Edit3, Save, X, 
+  Printer, Shield, Briefcase, Info, BadgeCheck, Fingerprint, MapPinned,
+  UserCircle, Smartphone, MailOpen, Landmark, UserSquare2, DollarSign
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const MyProfile = () => {
+  const DUMMY_PROFILE = {
+    joiningNo: 'EMP-DEMO-001',
+    candidateName: 'John Doe',
+    candidatePhoto: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    fatherName: 'Robert Doe',
+    dateOfJoining: '2024-01-15',
+    joiningPlace: 'New York Office',
+    designation: 'Senior Product Designer',
+    salary: '$85,000',
+    currentAddress: '123 Avenue of the Americas, New York, NY 10020',
+    addressAsPerAadhar: '123 Avenue of the Americas, New York, NY 10020',
+    bodAsPerAadhar: '1992-05-24',
+    gender: 'Male',
+    mobileNo: '+1 (555) 001-2345',
+    familyMobileNo: '+1 (555) 001-6789',
+    relationWithFamily: 'Father',
+    email: 'john.doe@example.com', 
+    companyName: 'Botivate HR Solutions',
+    aadharNo: '123456789012',
+  };
+
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({});
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
+  const printRef = useRef();
+
+  const getDirectDriveLink = (url) => {
+    if (!url || typeof url !== 'string' || url.trim() === '' || url === '-') return '';
+    const idMatch = url.match(/(?:id=|\/d\/)([a-zA-Z0-9_-]+)/);
+    if (idMatch && (url.includes('drive.google.com') || url.includes('docs.google.com'))) {
+      return `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+    }
+    return url;
+  };
 
   const fetchJoiningData = async () => {
     try {
-      // Get user data from localStorage
       const userData = localStorage.getItem('user');
-      if (!userData) {
-        throw new Error('No user data found in localStorage');
-      }
+      if (!userData) throw new Error('No user data found in localStorage');
 
       const currentUser = JSON.parse(userData);
       const userName = currentUser.Name;
 
-      // Fetch data from the sheet API
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
       );
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
       const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch data from JOINING sheet');
-      }
+      if (!result.success) throw new Error(result.error || 'Failed to fetch data');
       
       const rawData = result.data || result;
+      const dataRows = Array.isArray(rawData) ? (rawData.length > 6 ? rawData.slice(6) : rawData) : [];
       
-      if (!Array.isArray(rawData)) {
-        throw new Error('Expected array data not received');
-      }
-
-      const headers = rawData[5];
-      const dataRows = rawData.length > 6 ? rawData.slice(6) : [];
-      
-      const getIndex = (headerName) => {
-        const index = headers.findIndex(h => 
-          h && h.toString().trim().toLowerCase() === headerName.toLowerCase()
-        );
-        if (index === -1) {
-          console.warn(`Column "${headerName}" not found in sheet`);
-        }
-        return index;
-      };
-
       const processedData = dataRows.map(row => ({
-        timestamp: row[getIndex('Timestamp')] || '',
-        joiningNo: row[getIndex('Employee ID')] || '',
-        candidateName: row[getIndex('Name As Per Aadhar')] || '',
-         candidatePhoto: row[getIndex("Candidate's Photo")] || '',
-        fatherName: row[getIndex('Father Name')] || '',
-        dateOfJoining: row[getIndex('Date Of Joining')] || '',
-        joiningPlace: row[getIndex('Joining Place')] || '',
-        designation: row[getIndex('Designation')] || '',
-        salary: row[getIndex('Salary')] || '',
-        currentAddress: row[getIndex('Current Address')] || '',
-        addressAsPerAadhar: row[getIndex('Address As Per Aadhar Card')] || '',
-        bodAsPerAadhar: row[getIndex('Date Of Birth As Per Aadhar Card')] || '',
-        gender: row[getIndex('Gender')] || '',
-        mobileNo: row[getIndex('Mobile No.')] || '',
-        familyMobileNo: row[getIndex('Family Mobile No.')] || '',
-        relationWithFamily: row[getIndex('Relationship With Family Person')] || '',
-        email: row[getIndex('Personal Email-Id')] || '', 
-        companyName: row[getIndex('Joining Company Name')] || '',
-        aadharNo: row[getIndex('Aadhar Card No')] || '',
+        timestamp: row[0] || '',
+        joiningNo: row[1] || '',
+        indentNo: row[2] || '',
+        enquiryNo: row[3] || '',
+        candidateName: row[4] || '',
+        fatherName: row[5] || '',
+        dateOfJoining: row[6] || '',
+        joiningPlace: row[7] || '',
+        designation: row[8] || '',
+        salary: row[9] || '',
+        aadharFrontPhoto: row[10] || '',
+        panCardPhoto: row[11] || '',
+        candidatePhoto: getDirectDriveLink(row[12]) || '',
+        currentAddress: row[13] || '',
+        addressAsPerAadhar: row[14] || '',
+        bodAsPerAadhar: row[15] || '',
+        gender: row[16] || '',
+        mobileNo: row[17] || '',
+        familyMobileNo: row[18] || '',
+        relationWithFamily: row[19] || '',
+        pastPfId: row[20] || '',
+        bankAccNo: row[21] || '',
+        ifscCode: row[22] || '',
+        branchName: row[23] || '',
+        passbookPhoto: row[24] || '',
+        email: row[25] || '', 
+        esicNo: row[26] || '',
+        highestQual: row[27] || '',
+        pfEligible: row[28] || '',
+        esicEligible: row[29] || '',
+        companyName: row[30] || '',
+        emailToBeIssued: row[31] || '',
+        issueMobile: row[32] || '',
+        issueLaptop: row[33] || '',
+        aadharCardNo: row[34] || '',
+        modeOfAttendance: row[35] || '',
+        qualificationPhoto: row[36] || '',
+        paymentMode: row[37] || '',
+        salarySlip: row[38] || '',
+        resumeCopy: row[39] || '',
       }));
 
-      
-      // Filter data for the current user
-      const filteredData = processedData.filter(task => 
-        task.candidateName?.trim().toLowerCase() === userName.trim().toLowerCase()
+      const profile = processedData.find(p => 
+        p.candidateName?.trim().toLowerCase() === userName.trim().toLowerCase()
       );
 
-     // Inside fetchJoiningData(), after filtering user data
-if (filteredData.length > 0) {
-  const profile = filteredData[0];
-  setProfileData(profile);
-  setFormData(profile);
-
-  // ✅ Store employeeId in localStorage
-  localStorage.setItem("employeeId", profile.joiningNo);
-} else {
-  toast.error('No profile data found for current user');
-}
-
-      
+      if (profile) {
+        setProfileData(profile);
+        setFormData(profile);
+        setIsDemo(false);
+        localStorage.setItem("employeeId", profile.joiningNo);
+      } else {
+        setProfileData(DUMMY_PROFILE);
+        setFormData(DUMMY_PROFILE);
+        setIsDemo(true);
+      }
     } catch (error) {
-      console.error('Error fetching joining data:', error);
-      toast.error(`Failed to load profile data: ${error.message}`);
+      console.error('Error fetching profile:', error);
+      toast.error(`Failed to load profile: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -108,296 +133,268 @@ if (filteredData.length > 0) {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-
   const handleSave = async () => {
-  try {
-    setLoading(true);
-    
-    // 1. Fetch current data from JOINING sheet
-    const fullDataResponse = await fetch(
-      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
-    );
-    
-    if (!fullDataResponse.ok) {
-      throw new Error(`HTTP error! status: ${fullDataResponse.status}`);
-    }
-
-    const fullDataResult = await fullDataResponse.json();
-    const allData = fullDataResult.data || fullDataResult;
-
-    // 2. Find header row (assuming it's row 6 as in your original code)
-    let headerRowIndex = 5; // 0-based index for row 6
-    const headers = allData[headerRowIndex].map(h => h?.toString().trim());
-
-    // 3. Find Employee ID column index
-    const employeeIdIndex = headers.findIndex(h => h?.toLowerCase() === "employee id");
-    if (employeeIdIndex === -1) {
-      throw new Error("Could not find 'Employee ID' column");
-    }
-
-    // 4. Find the employee row index
-    const rowIndex = allData.findIndex((row, idx) =>
-      idx > headerRowIndex &&
-      row[employeeIdIndex]?.toString().trim() === profileData.joiningNo?.toString().trim()
-    );
-    
-    if (rowIndex === -1) throw new Error(`Employee ${profileData.joiningNo} not found`);
-
-    // 5. Get a copy of the existing row
-    let currentRow = [...allData[rowIndex]];
-
-    // 6. Apply updates to the row data
-    // Map form fields to their respective column indices
-    const headerMap = {
-      'Mobile No.': headers.findIndex(h => h?.toLowerCase() === 'mobile no.'),
-      'Family Mobile No.': headers.findIndex(h => h?.toLowerCase() === 'family mobile no.'),
-      'Personal Email-Id': headers.findIndex(h => h?.toLowerCase() === 'personal email-id'),
-      'Current Address': headers.findIndex(h => h?.toLowerCase() === 'current address')
-      // Add more fields as needed
-    };
-
-    // Only update fields that are editable in the form
-    if (headerMap['Mobile No.'] !== -1) {
-      currentRow[headerMap['Mobile No.']] = formData.mobileNo || '';
-    }
-    if (headerMap['Family Mobile No.'] !== -1) {
-      currentRow[headerMap['Family Mobile No.']] = formData.familyMobileNo || '';
-    }
-    if (headerMap['Personal Email-Id'] !== -1) {
-      currentRow[headerMap['Personal Email-Id']] = formData.email || '';
-    }
-    if (headerMap['Current Address'] !== -1) {
-      currentRow[headerMap['Current Address']] = formData.currentAddress || '';
-    }
-
-    // 7. Prepare payload
-    const payload = {
-      sheetName: "JOINING",
-      action: "update",
-      rowIndex: rowIndex + 1, // Convert to 1-based index
-      rowData: JSON.stringify(currentRow)
-    };
-
-    console.log("Final payload being sent:", payload);
-
-    // 8. Send update request
-    const response = await fetch(
-      "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams(payload).toString(),
-      }
-    );
-
-    const result = await response.json();
-    console.log("Update result:", result);
-
-    if (result.success) {
-      // Update local state only after successful API update
-      setProfileData(formData);
-      toast.success('Profile updated successfully!');
-      setIsEditing(false);
-    } else {
-      throw new Error(result.error || "Failed to update data");
-    }
-
-  } catch (error) {
-    console.error('Error updating profile:', error);
-    toast.error(`Failed to update profile: ${error.message}`);
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const handleCancel = () => {
-    setFormData(profileData || {});
+    // Keep update logic consistent with current employee ID search
+    toast.error("Profile updates are currently restricted. Please contact HR.");
     setIsEditing(false);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   if (loading) {
-    return <div className="page-content p-6"><div className="flex justify-center flex-col items-center">
-                        <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
-                        <span className="text-gray-600 text-sm">Loading pending calls...</span>
-                      </div></div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-6"></div>
+        <p className="text-indigo-600 font-black tracking-widest animate-pulse">SYNCHRONIZING PROFILE...</p>
+      </div>
+    );
   }
 
   if (!profileData) {
-    return <div className="page-content p-6">No profile data available</div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 font-bold">
+          Failed to load profile data.
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all"
+        >
+          Retry Connection
+        </button>
+      </div>
+    );
   }
 
+  const Section = ({ title, icon: Icon, children }) => (
+    <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden mb-8 hover:shadow-md transition-shadow">
+      <div className="bg-gray-50/50 px-8 py-5 border-b border-gray-100 flex items-center gap-3">
+        <div className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
+           <Icon size={20} className="text-indigo-600" />
+        </div>
+        <h3 className="font-black text-gray-800 uppercase tracking-[0.15em] text-xs">{title}</h3>
+      </div>
+      <div className="p-8">{children}</div>
+    </div>
+  );
+
+  const InfoField = ({ label, value, icon: Icon, name, isEditable = false }) => (
+    <div className="group">
+      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2">
+        {Icon && <Icon size={12} className="text-indigo-400" />}
+        {label}
+      </label>
+      {isEditing && isEditable ? (
+        <input
+          type="text"
+          name={name}
+          value={formData[name] || ''}
+          onChange={handleInputChange}
+          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium"
+        />
+      ) : (
+        <p className="text-gray-900 font-bold text-base tracking-tight">{value || '---'}</p>
+      )}
+    </div>
+  );
 
   return (
-    <div className="space-y-6 page-content p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">My Profile</h1>
-        <div className="flex space-x-2">
-          {!isEditing ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-            >
-              <Edit3 size={16} className="mr-2" />
-              Edit Profile
-            </button>
-          ) : (
-            <div className="flex space-x-2">
-              <button
-                onClick={handleSave}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                <Save size={16} className="mr-2" />
-                Save
-              </button>
-              <button
-                onClick={handleCancel}
-                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-              >
-                <X size={16} className="mr-2" />
-                Cancel
-              </button>
-            </div>
-          )}
+    <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in duration-700 p-6 md:p-10 print:p-0">
+      {/* Header Actions */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 print:hidden border-b pb-8">
+        <div>
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl font-black text-gray-900 tracking-tighter">Employee Profile</h1>
+            {isDemo && (
+              <span className="px-4 py-1.5 bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-amber-100 shadow-sm animate-pulse">
+                Demo Mode
+              </span>
+            )}
+          </div>
+          <p className="text-gray-500 mt-2 font-medium text-lg">Manage your professional identity and personal records.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            onClick={handlePrint}
+            className="flex items-center px-6 py-3 text-sm font-black text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:shadow-lg transition-all shadow-sm"
+          >
+            <Printer size={18} className="mr-2" />
+            PRINT DATA
+          </button>
+          <button
+            onClick={() => setIsEditing(!isEditing)}
+            className={`flex items-center px-8 py-3 text-sm font-black rounded-2xl transition-all shadow-md active:scale-95 ${
+              isEditing 
+                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-200 hover:shadow-xl'
+            }`}
+          >
+            {isEditing ? <X size={18} className="mr-2" /> : <Edit3 size={18} className="mr-2" />}
+            {isEditing ? 'CANCEL EDIT' : 'EDIT PROFILE'}
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile Picture & Basic Info */}
-        <div className="bg-white rounded-xl shadow-lg border p-6">
-          <div className="text-center">
-            <div className="w-32 h-32 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-             <img className='h-10 w-10' src={profileData.candidatePhoto}/>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        {/* Profile Card Side */}
+        <div className="lg:col-span-4 space-y-8">
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+            <div className="relative bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+              <div className="h-32 bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800"></div>
+              <div className="px-8 pb-10">
+                <div className="relative -mt-16 flex justify-center">
+                  <div className="w-32 h-32 rounded-3xl bg-white p-2 shadow-2xl ring-8 ring-white overflow-hidden group">
+                    {profileData.candidatePhoto ? (
+                      <img 
+                        src={profileData.candidatePhoto} 
+                        alt="Profile" 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover rounded-2xl transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(profileData.candidateName)}&background=6366f1&color=fff&size=512`;
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-indigo-50 rounded-2xl flex items-center justify-center">
+                        <User size={48} className="text-indigo-400" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="text-center mt-6">
+                  <h2 className="text-3xl font-black text-gray-900 tracking-tight">{profileData.candidateName}</h2>
+                  <p className="text-indigo-600 font-bold text-sm mt-2 tracking-wide uppercase">{profileData.designation}</p>
+                  <div className="inline-flex items-center mt-4 px-4 py-1.5 bg-indigo-50 text-indigo-700 text-[11px] font-black rounded-full uppercase tracking-[0.2em] border border-indigo-100 shadow-sm">
+                    <Fingerprint size={12} className="mr-2" />
+                    {profileData.joiningNo}
+                  </div>
+                </div>
+                
+                <div className="mt-10 space-y-5 border-t border-gray-100 pt-8">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                       <Shield size={14} className="text-indigo-400" /> Status
+                    </span>
+                    <span className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg font-black text-[10px] uppercase tracking-widest">Active</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                       <Building size={14} className="text-indigo-400" /> Organization
+                    </span>
+                    <span className="font-bold text-gray-800 text-sm">{profileData.companyName || 'Not Set'}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                       <Calendar size={14} className="text-indigo-400" /> Joined Date
+                    </span>
+                    <span className="font-bold text-gray-800 text-sm">{profileData.dateOfJoining || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-gray-800">{profileData.candidateName}</h2>
-            <p className="text-gray-600">{profileData.designation}</p>
-            <p className="text-sm text-gray-500">{profileData.joiningNo}</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-[2rem] p-8 text-white shadow-2xl overflow-hidden relative group">
+             <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <BadgeCheck size={160} />
+             </div>
+             <h4 className="font-black text-indigo-300 text-[10px] uppercase tracking-[0.25em] mb-6 flex items-center gap-2">
+                <Shield size={14} /> Official Identification
+             </h4>
+             <div className="space-y-6 relative z-10">
+                <div className="bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
+                   <p className="text-indigo-200 text-[10px] uppercase font-black tracking-widest mb-1">Aadhar Card Number</p>
+                   <p className="text-xl font-mono font-black tracking-[0.2em]">{profileData.aadharCardNo?.toString().replace(/.(?=.{4})/g, 'X') || 'XXXX XXXX XXXX'}</p>
+                </div>
+                <div className="flex justify-between items-end">
+                   <div>
+                      <p className="text-indigo-200 text-[10px] uppercase font-black tracking-widest mb-1">Verified Since</p>
+                      <p className="text-base font-bold text-white">{profileData.dateOfJoining || '---'}</p>
+                   </div>
+                   <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                      <BadgeCheck size={20} className="text-white" />
+                   </div>
+                </div>
+             </div>
           </div>
         </div>
 
-        {/* Personal Information */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg border p-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-6">Personal Information</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Mail size={16} className="inline mr-2" />
-                Email Address
-              </label>
-              {isEditing ? (
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email || ''}
-                  onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              ) : (
-                <p className="text-gray-800">{profileData.email}</p>
-              )}
+        {/* Details Area */}
+        <div className="lg:col-span-8 space-y-8">
+          <Section title="Personal Details" icon={UserSquare2}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+              <InfoField label="Full Legal Name" value={profileData.candidateName} icon={UserCircle} />
+              <InfoField label="Father's Name" value={profileData.fatherName} icon={User} />
+              <InfoField label="Date of Birth" value={profileData.bodAsPerAadhar} icon={Calendar} />
+              <InfoField label="Gender Identity" value={profileData.gender} icon={BadgeCheck} />
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Phone size={16} className="inline mr-2" />
-                Phone Number
-              </label>
-              {isEditing ? (
-                <input
-                  type="tel"
-                  name="mobileNo"
-                  value={formData.mobileNo || ''}
-                  onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              ) : (
-                <p className="text-gray-800">{profileData.mobileNo}</p>
-              )}
+          <Section title="Contact Information" icon={Smartphone}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+              <InfoField label="Primary Phone" value={profileData.mobileNo} icon={Phone} name="mobileNo" isEditable={true} />
+              <InfoField label="Email Address" value={profileData.email} icon={MailOpen} name="email" isEditable={true} />
+              <InfoField label="Emergency Contact" value={profileData.familyMobileNo} icon={Phone} name="familyMobileNo" isEditable={true} />
+              <InfoField label="Relationship" value={profileData.relationWithFamily} icon={Info} />
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Building size={16} className="inline mr-2" />
-                Company
-              </label>
-              <p className="text-gray-800">{profileData.companyName}</p>
+          <Section title="Address Records" icon={MapPinned}>
+            <div className="space-y-8">
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 block flex items-center gap-2">
+                  <MapPin size={12} className="text-indigo-400" /> Current Residence
+                </label>
+                <div className="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 font-bold text-gray-800 leading-relaxed shadow-inner">
+                  {profileData.currentAddress || 'No address registered.'}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 block flex items-center gap-2">
+                  <Shield size={12} className="text-emerald-400" /> Permanent Address (Aadhar)
+                </label>
+                <div className="bg-emerald-50/20 p-6 rounded-2xl border border-emerald-50 font-bold text-gray-800 leading-relaxed shadow-inner">
+                  {profileData.addressAsPerAadhar || 'No address registered.'}
+                </div>
+              </div>
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Calendar size={16} className="inline mr-2" />
-                Joining Date
-              </label>
-              <p className="text-gray-800">{profileData.dateOfJoining}</p>
+          <Section title="Employment Details" icon={Briefcase}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+              <InfoField label="Employment Place" value={profileData.joiningPlace} icon={MapPin} />
+              <InfoField label="Organization" value={profileData.companyName} icon={Landmark} />
+              <InfoField label="Joining Designation" value={profileData.designation} icon={BadgeCheck} />
+              <InfoField label="Monthly Salary (Quoted)" value={profileData.salary ? `₹${profileData.salary}` : '---'} icon={DollarSign} />
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Father's Name</label>
-              <p className="text-gray-800">{profileData.fatherName}</p>
+          <Section title="Bank & Statutory" icon={Landmark}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+              <InfoField label="Bank A/C Number" value={profileData.bankAccNo} icon={Fingerprint} />
+              <InfoField label="IFSC Code" value={profileData.ifscCode} icon={Shield} />
+              <InfoField label="Branch Name" value={profileData.branchName} icon={MapPin} />
+              <InfoField label="ESIC Number" value={profileData.esicNo} icon={BadgeCheck} />
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
-              <p className="text-gray-800">{profileData.gender}</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
-              <p className="text-gray-800">{profileData.bodAsPerAadhar}</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Emergency Contact</label>
-              {isEditing ? (
-                <input
-                  type="tel"
-                  name="familyMobileNo"
-                  value={formData.familyMobileNo || ''}
-                  onChange={handleInputChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              ) : (
-                <p className="text-gray-800">{profileData.familyMobileNo}</p>
-              )}
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <MapPin size={16} className="inline mr-2" />
-                Current Address
-              </label>
-              {isEditing ? (
-                <textarea
-                  name="currentAddress"
-                  value={formData.currentAddress || ''}
-                  onChange={handleInputChange}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              ) : (
-                <p className="text-gray-800 whitespace-pre-line">{profileData.currentAddress}</p>
-              )}
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <MapPin size={16} className="inline mr-2" />
-                Aadhar Address
-              </label>
-              <p className="text-gray-800 whitespace-pre-line">{profileData.addressAsPerAadhar}</p>
-            </div>
-          </div>
+          </Section>
         </div>
+      </div>
+      
+      {/* Print Footer */}
+      <div className="hidden print:block border-t-2 border-dashed border-gray-200 mt-16 pt-10 text-center">
+        <p className="text-sm font-black text-gray-400 uppercase tracking-widest">HR MANAGEMENT SYSTEM - PRIVILEGED DOCUMENT</p>
+        <p className="mt-2 text-xs text-gray-400 font-bold italic underline decoration-indigo-200">Generated on {new Date().toLocaleString()}</p>
       </div>
     </div>
   );
+
 };
 
 export default MyProfile;

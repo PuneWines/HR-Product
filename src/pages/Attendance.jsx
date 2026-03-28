@@ -1,92 +1,227 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Download } from 'lucide-react';
+import { Search, Download, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
-
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
 
 const Attendance = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
   const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [downloading, setDownloading] = useState({}); // Track individual download states
+
+  const timeToSeconds = (timeStr) => {
+    if (!timeStr || timeStr === '-' || timeStr === '0.0' || timeStr === '0') return 0;
+    try {
+      const timeMatch = timeStr.toString().match(/(\d+):(\d+):(\d+)/);
+      if (timeMatch) {
+        return parseInt(timeMatch[1], 10) * 3600 + parseInt(timeMatch[2], 10) * 60 + parseInt(timeMatch[3], 10);
+      }
+      if (timeStr.toString().includes('T')) {
+        const d = new Date(timeStr);
+        if (!isNaN(d.getTime())) {
+          return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+        }
+      }
+    } catch (e) {
+      return 0;
+    }
+    return 0;
+  };
+
+  const secondsToTime = (totalSeconds) => {
+    if (!totalSeconds || totalSeconds === 0) return '-';
+    const absSeconds = Math.abs(totalSeconds);
+    const hours = Math.floor(absSeconds / 3600);
+    const minutes = Math.floor((absSeconds % 3600) / 60);
+    const seconds = absSeconds % 60;
+    const sign = totalSeconds < 0 ? '-' : '';
+    return `${sign}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const calculateDays = (startDateStr, endDateStr) => {
+    if (!startDateStr || !endDateStr) return 0;
+    let startDate, endDate;
+    try {
+      if (startDateStr.toString().includes('/')) {
+        const [startDay, startMonth, startYear] = startDateStr.toString().split('/').map(Number);
+        startDate = new Date(startYear, startMonth - 1, startDay);
+      } else {
+        startDate = new Date(startDateStr);
+      }
+      
+      if (endDateStr.toString().includes('/')) {
+        const [endDay, endMonth, endYear] = endDateStr.toString().split('/').map(Number);
+        endDate = new Date(endYear, endMonth - 1, endDay);
+      } else {
+        endDate = new Date(endDateStr);
+      }
+      const diffTime = endDate.getTime() - startDate.getTime();
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    } catch (e) {
+      return 0;
+    }
+  };
 
   const fetchAttendanceData = async () => {
     setLoading(true);
-    setTableLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Report&action=fetch'
-      );
+      const MAIN_SCRIPT = 'https://script.google.com/macros/s/AKfycbybtkq0iB4NTrw5jHcpjkwyncpLZlBGpgADUxq2nuGdX36nWlE2zum-8DBmsQgu-FzhTQ/exec';
+      const SPREADSHEET_ID = '1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8';
+      const DETAILS_SCRIPT = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const [attRes, joinRes, leaveRes] = await Promise.all([
+        fetch(`${MAIN_SCRIPT}?sheet=Data&action=fetch&spreadsheetId=${SPREADSHEET_ID}`),
+        fetch(`${DETAILS_SCRIPT}?sheet=JOINING&action=fetch`),
+        fetch(`${DETAILS_SCRIPT}?sheet=Leave Management&action=fetch`)
+      ]);
+
+      if (!attRes.ok) throw new Error(`HTTP error! status: ${attRes.status}`);
+
+      const [attResult, joinResult, leaveResult] = await Promise.all([
+        attRes.json(),
+        joinRes.ok ? joinRes.json() : { data: [] },
+        leaveRes.ok ? leaveRes.json() : { data: [] }
+      ]);
+
+      if (!attResult.success) {
+        throw new Error(attResult.error || 'Failed to fetch attendance data');
       }
 
-      const result = await response.json();
-      console.log('Raw REPORT API response:', result);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch data from REPORT sheet');
+      // Process Joining Data for Designations
+      const joinData = Array.isArray(joinResult?.data) ? joinResult.data : [];
+      const designationMap = {};
+      if (joinData.length > 6) {
+        joinData.slice(6).forEach(row => {
+          const empName = (row[4] || '').toString().trim().toLowerCase();
+          const designation = row[8] || '-';
+          if (empName) designationMap[empName] = designation;
+        });
       }
 
-      const rawData = result.data || result;
+      // Process Leave Data for Holidays count
+      const leaveData = Array.isArray(leaveResult?.data) ? leaveResult.data : [];
+      const holidayMap = {};
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      
+      if (leaveData.length > 1) {
+        leaveData.slice(1).forEach(row => {
+          const empId = (row[2] || '').toString().trim();
+          const startDateStr = row[4];
+          const endDateStr = row[5];
+          const status = (row[7] || '').toString().toLowerCase().trim();
 
-      if (!Array.isArray(rawData)) {
-        throw new Error('Expected array data not received');
+          if (status === 'approved' && startDateStr && empId) {
+            let monthName = '';
+            const strVal = startDateStr.toString();
+            if (strVal.includes('/')) {
+              const parts = strVal.split('/');
+              if (parts.length === 3) {
+                const mIndex = parseInt(parts[1], 10) - 1;
+                if (mIndex >= 0 && mIndex < 12) monthName = monthNames[mIndex];
+              }
+            } else {
+              const d = new Date(strVal);
+              if (!isNaN(d.getTime())) {
+                monthName = monthNames[d.getMonth()];
+              }
+            }
+
+            if (monthName) {
+              const key = `${empId}-${monthName}`;
+              const days = calculateDays(startDateStr, endDateStr);
+              if (days > 0) {
+                holidayMap[key] = (holidayMap[key] || 0) + days;
+              }
+            }
+          }
+        });
       }
 
-      // In your screenshot, headers looked around row 4–5 → adjust index if needed
-      const headers = rawData[3]; // row 4 in sheet (0-based index = 3)
-      const dataRows = rawData.length > 4 ? rawData.slice(4) : [];
-
-const getIndex = (headerName) => {
-    const index = headers.findIndex(
-      (h) => h && h.toString().trim().toLowerCase() === headerName.toLowerCase()
-    );
-    if (index === -1) {
-      console.warn(`Column "${headerName}" not found in sheet. Available headers:`, headers);
-    }
-    return index;
-  };
-
+      // Process Attendance Data
+      const rawData = attResult.data || attResult;
+      const dataRows = Array.isArray(rawData) && rawData.length > 1 ? rawData.slice(1) : [];
 
       const processedData = dataRows.map((row) => ({
-        year: row[getIndex('Year')] || '',
-        month: row[getIndex('Month')] || '',
-        empId: row[getIndex('Employee ID')] || '',
-        name: row[getIndex('Name')] || '',
-        designation: row[getIndex('Designation')] || '',
-        company: row[getIndex('Company Name')] || '',
-        punchDays: row[getIndex('Punch Days')] || '',
-        totalOnTime: row[getIndex('Total On Time (>=8)')] || '',
-        lateDays: row[getIndex('Late Days(4-8)')] || '',
-        lateNotAllowed: row[getIndex('Late Not Allowed')],
-        lateAllowed: row[getIndex('Late Allowed')] || '',
-        punchMiss: row[getIndex('Punch Miss')] || '',
-        holidays: row[getIndex('Sunday+National  Holiday Given')] || '',
-        absents: row[getIndex('Absent(<4)')] || '',
-        totalWorking: row[getIndex('Total Days')] || '',
-        mgmtAdjustment: row[getIndex('Mgmt Adjustment')] || '',
-        grandTotalDays: row[getIndex('Grand Total Days')] || '',
+        employeeCode: row[0] || '',
+        employeeName: row[1] || '',
+        inTime: row[3] || '',
+        outTime: row[4] || '',
+        totalDuration: row[5] || '',
+        totalWithLunchDuration: row[6] || '',
+        lunchTime: row[7] || '',
+        actualTotalDuration: row[8] || '',
+        year: row[11] || '',
+        month: row[12] || '',
       }));
 
-      console.log('Processed attendance data:', processedData);
+      const groupedMap = new Map();
+      processedData.forEach(row => {
+        if (!row.employeeCode && !row.employeeName) return; 
+        
+        const monthKey = row.month ? row.month.toString().trim() : 'Unknown';
+        const yearKey = row.year ? row.year.toString().trim() : 'Unknown';
+        const key = `${row.employeeCode}-${monthKey}-${yearKey}`;
+        
+        if (!groupedMap.has(key)) {
+          groupedMap.set(key, {
+            employeeCode: row.employeeCode,
+            employeeName: row.employeeName,
+            inTimeSecs: 0,
+            outTimeSecs: 0,
+            totalDurationSecs: 0,
+            totalWithLunchDurationSecs: 0,
+            lunchTimeSecs: 0,
+            actualTotalDurationSecs: 0,
+            year: yearKey,
+            month: monthKey,
+          });
+        }
 
-      // Example usage: set state
-      setAttendanceData(processedData);
+        const group = groupedMap.get(key);
+        group.inTimeSecs += timeToSeconds(row.inTime);
+        group.outTimeSecs += timeToSeconds(row.outTime);
+        group.totalDurationSecs += timeToSeconds(row.totalDuration);
+        group.totalWithLunchDurationSecs += timeToSeconds(row.totalWithLunchDuration);
+        group.lunchTimeSecs += timeToSeconds(row.lunchTime);
+        group.actualTotalDurationSecs += timeToSeconds(row.actualTotalDuration);
+      });
 
+      const finalGroupedData = Array.from(groupedMap.values()).map(g => {
+        const empNameLower = g.employeeName.toString().trim().toLowerCase();
+        const designation = designationMap[empNameLower] || 'N/A';
+        const holidayKey = `${g.employeeCode}-${g.month}`;
+        const holidays = holidayMap[holidayKey] || 0;
+
+        return {
+          year: g.year,
+          employeeCode: g.employeeCode,
+          employeeName: g.employeeName,
+          designation,
+          month: g.month,
+          inTime: secondsToTime(g.inTimeSecs),
+          outTime: secondsToTime(g.outTimeSecs),
+          totalDuration: secondsToTime(g.totalDurationSecs),
+          totalWithLunchDuration: secondsToTime(g.totalWithLunchDurationSecs),
+          lunchTime: secondsToTime(g.lunchTimeSecs),
+          actualTotalDuration: secondsToTime(g.actualTotalDurationSecs),
+          holidays
+        };
+      });
+
+      setAttendanceData(finalGroupedData);
+      
+      if (finalGroupedData.length > 0) {
+        const uniqueMonths = [...new Set(finalGroupedData.map(r => r.month))].filter(m => m !== 'Unknown');
+        if (uniqueMonths.length > 0) setSelectedMonth(uniqueMonths[0]);
+      }
     } catch (error) {
-      console.error('Error fetching REPORT data:', error);
+      console.error('Error fetching data:', error);
       setError(error.message);
     } finally {
       setLoading(false);
-      setTableLoading(false);
     }
   };
 
@@ -94,129 +229,40 @@ const getIndex = (headerName) => {
     fetchAttendanceData();
   }, []);
 
-  // Download data as Excel
-  const downloadExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(attendanceData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
-    XLSX.writeFile(workbook, "attendance_data.xlsx");
-  };
+  const months = [...new Set(attendanceData.map(r => r.month))].filter(Boolean);
+  const years = [...new Set(attendanceData.map(r => r.year))].filter(Boolean);
 
- const downloadDailyData = async (empId, name, month) => {
-    // Check if we have valid parameters
-    if (!empId || !month) {
-      console.error('Missing parameters - empId:', empId, 'month:', month);
-      alert('Cannot download: Missing employee ID or month information');
-      return;
-    }
+  const filteredData = attendanceData.filter(item => {
+    const matchesSearch = 
+      item.employeeName.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.employeeCode.toString().toLowerCase().includes(searchTerm.toLowerCase());
     
-    setDownloading(prev => ({ ...prev, [`${name}-${month}`]: true }));
-      
-    try {
-      const response = await fetch(
-        `https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=Report Daily&action=fetch`
-      );
+    const matchesMonth = selectedMonth ? item.month === selectedMonth : true;
+    const matchesYear = selectedYear ? item.year.toString() === selectedYear : true;
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+    return matchesSearch && matchesMonth && matchesYear;
+  });
 
-      const result = await response.json();
-      console.log('Daily data response:', result);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch daily data');
-      }
-
-      const rawData = result.data || result;
-
-      if (!Array.isArray(rawData) || rawData.length === 0) {
-        throw new Error('No daily data found');
-      }
-
-      // Get headers from the first row
-      const headers = rawData[0];
-      
-      // Find column indices
-      const getIndex = (headerName) => {
-        return headers.findIndex(
-          (h) => h && h.toString().trim().toLowerCase() === headerName.toLowerCase()
-        );
-      };
-
-      const empIdIndex = getIndex('Employee ID');
-      const monthIndex = getIndex('Month');
-      
-      console.log('Searching for - Emp ID:', empId, 'Month:', month);
-      console.log('Found indices - Emp ID:', empIdIndex, 'Month:', monthIndex);
-      
-      if (empIdIndex === -1 || monthIndex === -1) {
-        throw new Error('Required columns not found in daily data');
-      }
-
-      // Filter data based on employee ID and month
-      const filteredData = rawData.filter((row, index) => {
-        if (index === 0) return false; // Skip header row
-        
-        const rowEmpId = row[empIdIndex] ? row[empIdIndex].toString().trim() : '';
-        const rowMonth = row[monthIndex] ? row[monthIndex].toString().trim().toLowerCase() : '';
-        const targetMonth = month.toString().trim().toLowerCase();
-        
-        return rowEmpId === empId.toString().trim() && rowMonth === targetMonth;
-      });
-
-      console.log('Filtered data count:', filteredData.length);
-
-      if (filteredData.length === 0) {
-        throw new Error(`No daily data found for Employee ID: ${empId} and Month: ${month}`);
-      }
-
-      // Create PDF document
-      const doc = new jsPDF({
-        orientation:'landscape',
-        unit:'mm',
-        format:'a4'
-      });
-      
-      // Add title
-      doc.setFontSize(16);
-      doc.text(`Daily Attendance - ${name} (${empId}) - ${month}`, 14, 15);
-      
-      // Prepare data for the table
-      const tableData = filteredData.map(row => {
-        return headers.map((header, index) => {
-          return row[index] !== undefined ? String(row[index]) : '';
-        });
-      });
-
-      // Add table to PDF
-      autoTable(doc, {
-        head: [headers],
-        body: tableData,
-        startY: 20,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [41, 128, 185] }
-      });
-
-      // Save the PDF
-      doc.save(`${empId}_${name}_${month}_daily_attendance.pdf`);
-      
-    } catch (error) {
-      console.error('Error downloading daily data:', error);
-      alert(`Error: ${error.message}`);
-    } finally {
-      setDownloading(prev => ({ ...prev, [`${name}-${month}`]: false }));
-    }
+  const downloadExcel = () => {
+    const dataToExport = filteredData.map(item => ({
+      'Year': item.year,
+      'Employee Code': item.employeeCode,
+      'Employee Name': item.employeeName,
+      'Designation': item.designation,
+      'Month': item.month,
+      'IN Time': item.inTime,
+      'OUT Time': item.outTime,
+      'Total Duration': item.totalDuration,
+      'Total With Lunch': item.totalWithLunchDuration,
+      'Lunch Time': item.lunchTime,
+      'Actual Duration': item.actualTotalDuration,
+      'Holidays': item.holidays
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Attendance");
+    XLSX.writeFile(workbook, `attendance_monthly_summary_${selectedMonth || 'all'}.xlsx`);
   };
-
-  // Filter data based on search term (name, empId, month, designation, year)
-  const filteredData = attendanceData.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.empId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.month.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.designation.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.year.toString().includes(searchTerm)
-  );
 
   return (
     <div className="space-y-6 ml-50 p-6">
@@ -224,119 +270,123 @@ const getIndex = (headerName) => {
         <h1 className="text-2xl font-bold">Attendance Records Monthly</h1>
         <button
           onClick={downloadExcel}
-          className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          disabled={filteredData.length === 0}
+          className={`flex items-center px-4 py-2 rounded-lg text-white ${filteredData.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
         >
           <Download size={20} className="mr-2" />
           Download Excel
         </button>
       </div>
 
-      {/* Search Bar */}
-      <div className="bg-white p-4 rounded-lg shadow">
-        <div className="flex flex-1 max-w-md">
-          <div className="relative w-full">
-            <input
-              type="text"
-              placeholder="Search by name, ID, month, designation, or year..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
-          </div>
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-lg shadow flex flex-wrap gap-4 items-center">
+        <div className="relative flex-1 min-w-[200px]">
+          <input
+            type="text"
+            placeholder="Search by name or code..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-700"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+        </div>
+        
+        <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
+          <Filter size={18} className="text-gray-500" />
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="bg-transparent focus:outline-none text-gray-700 font-medium"
+          >
+            <option value="">All Months</option>
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="bg-transparent focus:outline-none text-gray-700 font-medium"
+          >
+            <option value="">All Years</option>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
         </div>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-6">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
+        <div className="overflow-x-auto max-h-[70vh]">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-100 sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Year</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Employee Code</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Employee Name</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Designation</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Month</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">IN Time</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">OUT Time</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Total Duration</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Total With Lunch</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Lunch Time</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">Actual Duration</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-indigo-500 uppercase tracking-wider whitespace-nowrap">Holidays</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {loading ? (
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Designation</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Punch Days</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Absent</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Days</th>
-                  
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late Days</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late Not Allowed</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late Allowed</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Punch Miss</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Holidays</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Download</th>
+                  <td colSpan="12" className="px-6 py-12 text-center">
+                    <div className="flex justify-center flex-col items-center">
+                      <div className="w-8 h-8 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-3"></div>
+                      <span className="text-gray-600 text-sm font-medium">Processing aggregated data...</span>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {tableLoading ? (
-                  <tr>
-                    <td colSpan="14" className="px-6 py-12 text-center">
-                      <div className="flex justify-center flex-col items-center">
-                        <div className="w-6 h-6 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-2"></div>
-                        <span className="text-gray-600 text-sm">Loading attendance data...</span>
-                      </div>
-                    </td>
+              ) : error ? (
+                <tr>
+                  <td colSpan="12" className="px-6 py-12 text-center">
+                    <p className="text-red-500 font-medium mb-3">Error: {error}</p>
+                    <button
+                      onClick={fetchAttendanceData}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium shadow-sm transition-colors"
+                    >
+                      Retry
+                    </button>
+                  </td>
+                </tr>
+              ) : filteredData.length > 0 ? (
+                filteredData.map((item, index) => (
+                  <tr key={index} className="hover:bg-blue-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{item.year}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{item.employeeCode}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">{item.employeeName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{item.designation}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-gray-800">{item.month}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-400">{item.inTime}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-400">{item.outTime}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-bold">{item.totalDuration}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-bold">{item.totalWithLunchDuration}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-orange-500 font-bold">{item.lunchTime}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-indigo-700">{item.actualTotalDuration}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-indigo-600">{item.holidays}</td>
                   </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan="14" className="px-6 py-12 text-center">
-                      <p className="text-red-500">Error: {error}</p>
-                      <button 
-                        onClick={fetchAttendanceData}
-                        className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-                      >
-                        Retry
-                      </button>
-                    </td>
-                  </tr>
-                ) : filteredData.length > 0 ? (
-                  filteredData.map((item, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.year}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.empId}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.name}</td>
-                      
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.designation}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.month}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.punchDays}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.absents}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.totalWorking}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.lateDays}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.lateNotAllowed}</td> 
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.lateAllowed}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.punchMiss}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.holidays}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <button
-  onClick={() => downloadDailyData(item.empId, item.name, item.month)}
-  disabled={downloading[`${item.name}-${item.month}`]}
-  className="p-2 text-blue-600 hover:text-blue-800 disabled:opacity-50"
-  title="Download daily attendance"
-> 
-  {downloading[`${item.name}-${item.month}`] ? (
-    <div className="w-4 h-4 border-2 border-blue-600 border-dashed rounded-full animate-spin"></div>
-  ) : (
-    <Download size={16} />
-  )}
-</button>
-                        </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="14" className="px-6 py-12 text-center">
-                      <p className="text-gray-500">No attendance records found.</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="12" className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <Search size={32} className="mb-2 text-gray-300" />
+                      <p className="font-medium text-lg text-gray-600">No records found</p>
+                      <p className="text-sm mt-1">Try adjusting your filters</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

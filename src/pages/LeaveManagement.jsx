@@ -14,6 +14,7 @@ const LeaveManagement = () => {
   const [activeTab, setActiveTab] = useState('pending');
   const [actionInProgress, setActionInProgress] = useState(null);
   const [editableDates, setEditableDates] = useState({ from: '', to: '' });
+  const [nextSerialNo, setNextSerialNo] = useState('SN-01');
   
   // New state for leave request modal
   const [showModal, setShowModal] = useState(false);
@@ -182,7 +183,7 @@ const fetchEmployees = async () => {
 
       const rowData = [
         formattedTimestamp,           // Timestamp
-        "",                          // Serial number (empty for auto-increment)
+        nextSerialNo,                 // Serial number (SN-01, SN-02, etc.)
         formData.employeeId,         // Employee ID
         formData.employeeName,       // Employee Name
         formatDOB(formData.fromDate), // Leave Date Start
@@ -275,46 +276,46 @@ const handleLeaveAction = async (action) => {
     const today = new Date();
     const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')} ${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}:${String(today.getSeconds()).padStart(2, '0')}`;
     
-    // Update dates if they were changed
+    // Identify which cells actually need to be updated
+    const fieldsToUpdate = [
+      { columnIndex: statusIndex + 1, value: action === 'accept' ? 'Approved' : 'Rejected' },
+      { columnIndex: timestampIndex + 1, value: formattedDate }
+    ];
+
     if (editableDates.from && editableDates.from !== selectedRow.startDate) {
-      currentRow[startDateIndex] = editableDates.from; // Already in YYYY-MM-DD from input
+      fieldsToUpdate.push({ columnIndex: startDateIndex + 1, value: editableDates.from });
     }
 
     if (editableDates.to && editableDates.to !== selectedRow.endDate) {
-      currentRow[endDateIndex] = editableDates.to; // Already in YYYY-MM-DD from input
+      fieldsToUpdate.push({ columnIndex: endDateIndex + 1, value: editableDates.to });
     }
-    
-    currentRow[timestampIndex] = formattedDate;
-    
-    // FIX: Use the correct status values that match your filtering logic
-    currentRow[statusIndex] = action === 'accept' ? 'Approved' : 'Rejected';
 
-    const payload = {
-      sheetName: "Leave Management",
-      action: "update",
-      rowIndex: rowIndex + 1,
-      rowData: JSON.stringify(currentRow)
-    };
-
-    const response = await fetch(
-      "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
-      {
+    const updatePromises = fieldsToUpdate.map(field => 
+      fetch("https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams(payload).toString(),
-      }
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          sheetName: "Leave Management",
+          action: "updateCell",
+          rowIndex: (rowIndex + 1).toString(),
+          columnIndex: field.columnIndex.toString(),
+          value: field.value
+        }).toString()
+      })
     );
 
-    const result = await response.json();
-    if (result.success) {
+    const responses = await Promise.all(updatePromises);
+    const results = await Promise.all(responses.map(r => r.json()));
+    
+    const hasError = results.some(result => !result.success);
+    
+    if (!hasError) {
       toast.success(`Leave ${action === 'accept' ? 'approved' : 'rejected'} for ${selectedRow.employeeName || 'employee'}`);
       fetchLeaveData();
       setSelectedRow(null);
       setEditableDates({ from: '', to: '' });
     } else {
-      throw new Error(result.error || "Update failed");
+      throw new Error("One or more cell updates failed");
     }
 
   } catch (error) {
@@ -354,6 +355,22 @@ const handleLeaveAction = async (action) => {
       }
 
       const dataRows = rawData.length > 1 ? rawData.slice(1) : [];
+
+      // Calculate next Serial Number (SN-01, SN-02, etc.)
+      let maxSerial = 0;
+      dataRows.forEach(row => {
+        const snStr = row[1]; // Column B: Serial No
+        if (snStr !== null && snStr !== undefined) {
+          const str = String(snStr).trim();
+          if (str.startsWith('SN-')) {
+            const num = parseInt(str.substring(3), 10);
+            if (!isNaN(num) && num > maxSerial) {
+              maxSerial = num;
+            }
+          }
+        }
+      });
+      setNextSerialNo(`SN-${String(maxSerial + 1).padStart(2, '0')}`);
       
       const processedData = dataRows.map(row => ({
         timestamp: row[0] || '',

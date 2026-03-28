@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -14,10 +14,10 @@ import {
   LineChart,
   Line
 } from 'recharts';
-import { 
-  Users, 
-  UserCheck, 
-  UserX, 
+import {
+  Users,
+  UserCheck,
+  UserX,
   UserPlus,
   TrendingUp,
   Clock,
@@ -34,7 +34,7 @@ const Dashboard = () => {
   const [designationData, setDesignationData] = useState([]);
   const [resignations, setResignations] = useState(0);
   const [terminations, setTerminations] = useState(0);
-  
+
   // Mock data for other charts
   const employeeStatusData = [
     { name: 'Active', value: activeEmployee, color: '#10B981' },
@@ -52,14 +52,14 @@ const Dashboard = () => {
 
   const parseSheetDate = (dateStr) => {
     if (!dateStr) return null;
-    
+
     // Already a Date object
     if (dateStr instanceof Date) return dateStr;
-    
+
     // Try ISO / normal parse
     const iso = Date.parse(dateStr);
     if (!isNaN(iso)) return new Date(iso);
-    
+
     // Try dd/mm/yyyy or d/m/yyyy
     const parts = dateStr.toString().split(/[\/\-]/); // split by "/" or "-"
     if (parts.length === 3) {
@@ -67,7 +67,7 @@ const Dashboard = () => {
       if (year < 100) year += 2000; // handle yy
       return new Date(year, month - 1, day);
     }
-    
+
     return null;
   };
 
@@ -76,31 +76,31 @@ const Dashboard = () => {
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
       );
-  
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-  
+
       const result = await response.json();
-  
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch data from JOINING sheet');
       }
-  
+
       const rawData = result.data || result;
       if (!Array.isArray(rawData)) {
         throw new Error('Expected array data not received');
       }
-  
+
       // Headers are row 6 → index 5
       const headers = rawData[5];
       const dataRows = rawData.length > 6 ? rawData.slice(6) : [];
-  
+
       // Find index of "Status", "Date of Joining", and "Designation" columns
       const statusIndex = headers.findIndex(
         h => h && h.toString().trim().toLowerCase() === "status"
       );
-      
+
       const dateOfJoiningIndex = headers.findIndex(
         h => h && h.toString().trim().toLowerCase().includes("date of joining")
       );
@@ -108,11 +108,11 @@ const Dashboard = () => {
       const designationIndex = headers.findIndex(
         h => h && h.toString().trim().toLowerCase() === "designation"
       );
-  
+
       let activeCount = 0;
       const monthlyHiring = {};
       const designationCounts = {};
-      
+
       // Initialize monthly hiring data for the last 6 months
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const currentDate = new Date();
@@ -121,13 +121,13 @@ const Dashboard = () => {
         const monthYear = `${months[monthIndex]} ${currentDate.getFullYear()}`;
         monthlyHiring[monthYear] = { hired: 0 };
       }
-  
+
       if (statusIndex !== -1) {
         activeCount = dataRows.filter(
           row => row[statusIndex]?.toString().trim().toLowerCase() === "active"
         ).length;
       }
-  
+
       // Count hires by month if date of joining column exists
       if (dateOfJoiningIndex !== -1) {
         dataRows.forEach(row => {
@@ -167,18 +167,18 @@ const Dashboard = () => {
 
         setDesignationData(designationArray);
       }
-  
+
       // Update state
       setTotalEmployee(dataRows.length);
       setActiveEmployee(activeCount);
-      
+
       // Return both counts and monthly hiring data
-      return { 
-        total: dataRows.length, 
+      return {
+        total: dataRows.length,
         active: activeCount,
-        monthlyHiring 
+        monthlyHiring
       };
-  
+
     } catch (error) {
       console.error("Error fetching joining count:", error);
       return { total: 0, active: 0, monthlyHiring: {} };
@@ -190,48 +190,48 @@ const Dashboard = () => {
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=LEAVING&action=fetch'
       );
-  
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-  
+
       const result = await response.json();
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch data from LEAVING sheet');
       }
-  
+
       const rawData = result.data || result;
       if (!Array.isArray(rawData)) {
         throw new Error('Expected array data not received');
       }
-  
+
       const headers = rawData[5];       // Row 6 headers
       const dataRows = rawData.slice(6); // Row 7 onwards
-  
+
       const normalize = (str) =>
         str ? str.toString().trim().toLowerCase().replace(/\s+/g, " ") : "";
-  
+
       const dateIndex = headers.findIndex(
         (h) => normalize(h) === "date of leaving"
       );
-  
+
       if (dateIndex === -1) {
         console.warn("⚠️ 'Date Of Leaving' column not found");
         setLeftEmployee(dataRows.length);
         setLeaveThisMonth(0);
         return { total: dataRows.length, monthlyLeaving: {} };
       }
-  
+
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
-  
+
       const thisMonthRows = dataRows.filter(row => {
         const dateFromColD = row[3]; // Column D
         const parsedDate = parseSheetDate(dateFromColD);
         const planned = row[12]; // Column M
         const actual = row[13];  // Column N
-        
+
         return (
           parsedDate &&
           parsedDate.getMonth() === currentMonth &&
@@ -244,28 +244,28 @@ const Dashboard = () => {
 
       // Count resignations and terminations dynamically
       // Column F (index 5) is Reason of Leaving
-      const resignationsCount = thisMonthRows.filter(row => 
+      const resignationsCount = thisMonthRows.filter(row =>
         row[5]?.toString().toLowerCase().includes('resignation')
       ).length;
 
-      const terminationsCount = thisMonthRows.filter(row => 
+      const terminationsCount = thisMonthRows.filter(row =>
         row[5]?.toString().toLowerCase().includes('termination')
       ).length;
 
       setResignations(resignationsCount);
       setTerminations(terminationsCount);
-  
+
       // Count leaving by month
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const monthlyLeaving = {};
-      
+
       // Initialize monthly leaving data for the last 6 months
       for (let i = 5; i >= 0; i--) {
         const monthIndex = (now.getMonth() - i + 12) % 12;
         const monthYear = `${months[monthIndex]} ${now.getFullYear()}`;
         monthlyLeaving[monthYear] = { left: 0 };
       }
-  
+
       dataRows.forEach(row => {
         const dateStr = row[dateIndex];
         if (dateStr) {
@@ -280,13 +280,13 @@ const Dashboard = () => {
           }
         }
       });
-  
+
       // Update states
       setLeftEmployee(dataRows.length);
       setLeaveThisMonth(thisMonthCount);
-  
+
       return { total: dataRows.length, monthlyLeaving };
-  
+
     } catch (error) {
       console.error("Error fetching leave count:", error);
       return { total: 0, monthlyLeaving: {} };
@@ -297,19 +297,19 @@ const Dashboard = () => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentDate = new Date();
     const result = [];
-    
+
     // Get data for the last 6 months
     for (let i = 5; i >= 0; i--) {
       const monthIndex = (currentDate.getMonth() - i + 12) % 12;
       const monthYear = `${months[monthIndex]} ${currentDate.getFullYear()}`;
-      
+
       result.push({
         month: months[monthIndex],
         hired: hiringData[monthYear]?.hired || 0,
         left: leavingData[monthYear]?.left || 0
       });
     }
-    
+
     return result;
   };
 
@@ -320,19 +320,19 @@ const Dashboard = () => {
           fetchJoiningCount(),
           fetchLeaveCount()
         ]);
-        
+
         // Prepare the monthly hiring data for the chart
         const monthlyData = prepareMonthlyHiringData(
-          joiningResult.monthlyHiring, 
+          joiningResult.monthlyHiring,
           leavingResult.monthlyLeaving
         );
-        
+
         setMonthlyHiringData(monthlyData);
       } catch (error) {
         console.error("Error fetching data:", error);
       }
     };
-    
+
     fetchData();
   }, []);
 
@@ -426,13 +426,13 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
                 <XAxis dataKey="month" stroke="#374151" />
                 <YAxis stroke="#374151" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'white',
                     border: '1px solid #e5e7eb',
                     borderRadius: '8px',
                     color: '#374151'
-                  }} 
+                  }}
                 />
                 <Legend wrapperStyle={{ color: '#374151' }} />
                 <Bar dataKey="hired" name="Hired" fill="#10B981" />
@@ -442,41 +442,41 @@ const Dashboard = () => {
           </div>
         </div>
 
-     
-      </div>
-       <div className="bg-white rounded-xl shadow-lg border p-6">
-  <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center">
-    <UserPlus size={20} className="mr-2" />
-    Designation-wise Employee Count
-  </h2>
-  <div className="h-80">
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={designationData}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
-        <XAxis dataKey="designation" stroke="#374151" />
-        <YAxis stroke="#374151" />
-        <Tooltip 
-          contentStyle={{ 
-            backgroundColor: 'white', 
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            color: '#374151'
-          }} 
-        />
-        <Bar dataKey="employees" name="Employees">
-          {designationData.map((entry, index) => (
-            <Cell 
-              key={`cell-${index}`} 
-              fill={index % 3 === 0 ? '#EF4444' : index % 3 === 1 ? '#10B981' : '#3B82F6'} 
-            />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
-  </div>
-</div>
 
-      
+      </div>
+      <div className="bg-white rounded-xl shadow-lg border p-6">
+        <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center">
+          <UserPlus size={20} className="mr-2" />
+          Designation-wise Employee Count
+        </h2>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={designationData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.1)" />
+              <XAxis dataKey="designation" stroke="#374151" />
+              <YAxis stroke="#374151" />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'white',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  color: '#374151'
+                }}
+              />
+              <Bar dataKey="employees" name="Employees">
+                {designationData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={index % 3 === 0 ? '#EF4444' : index % 3 === 1 ? '#10B981' : '#3B82F6'}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+
     </div>
   );
 };

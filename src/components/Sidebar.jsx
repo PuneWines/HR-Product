@@ -53,18 +53,18 @@ const Sidebar = ({ onClose }) => {
     { path: '/leaving', icon: UserX, label: 'Leaving' },
     { path: '/after-leaving-work', icon: UserMinus, label: 'After Leaving Work' },
     { path: '/employee', icon: Users, label: 'Employee' },
-    // { path: '/leave-management', icon: BookPlus, label: 'Leave Management' },
-    // {
-    //   type: 'dropdown',
-    //   icon: Book,
-    //   label: 'Attendance',
-    //   isOpen: attendanceOpen,
-    //   toggle: () => setAttendanceOpen(!attendanceOpen),
-    //   items: [
-    //     { path: '/attendance', label: 'Monthly' },
-    //     { path: '/attendancedaily', label: 'Daily' }
-    //   ]
-    // },
+    { path: '/leave-management', icon: BookPlus, label: 'Leave Management' },
+    {
+      type: 'dropdown',
+      icon: Book,
+      label: 'Attendance',
+      isOpen: attendanceOpen,
+      toggle: () => setAttendanceOpen(!attendanceOpen),
+      items: [
+        { path: '/attendance', label: 'Monthly' },
+        { path: '/attendancedaily', label: 'Daily' }
+      ]
+    },
     // { path: '/report', icon: NotebookPen, label: 'Report' },
     { path: '/payroll', icon: BadgeDollarSign, label: 'Payroll' },
     { path: '/misreport', icon: AlarmClockCheck, label: 'MIS Report' },

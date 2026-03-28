@@ -18,58 +18,66 @@ const FindEnquiry = () => {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingResume, setUploadingResume] = useState(false);
 
-const [formData, setFormData] = useState({
-  candidateName: '',
-  candidateDOB: '',
-  candidatePhone: '',
-  candidateEmail: '',
-  previousCompany: '',
-  jobExperience: '',
-  previousPosition: '',
-  maritalStatus: '',
-  candidatePhoto: null,
-  candidateResume: null,
-  presentAddress: '',
-  aadharNo: '',
-  status: 'NeedMore'
-});
+  const [formData, setFormData] = useState({
+    candidateName: '',
+    candidateDOB: '',
+    candidatePhone: '',
+    candidateEmail: '',
+    previousCompany: '',
+    jobExperience: '',
+    previousPosition: '',
+    maritalStatus: '',
+    candidatePhoto: null,
+    candidateResume: null,
+    presentAddress: '',
+    aadharNo: '',
+    status: 'NeedMore'
+  });
 
-  // Google Drive folder ID for file uploads
-  const GOOGLE_DRIVE_FOLDER_ID = '12sCqWAuyGR3-Wsxt4qj_FMWR0lmNZIKa';
+  // Google Drive folder IDs strictly matching User requirements:
+  const FOLDER_IDS = {
+    adhaar: '13hi-xRLOEksb7GH9CthczzlNJTWuD4X3',
+    bankPassbook: '19LaYkWtsRQ4sZgYiOG5CvzlIoPWJ_ER8',
+    candidatePhoto: '145FIQRxwN_omuW2XPHx-Bbk8kFOpzosd',
+    panCard: '16u6IPq0RtljUIVuZLy7VC_V-nq1I8ZYT',
+    qualification: '16EmIG-gZYAT2kRFPaINGPdj3AbP-KE-5',
+    resume: '1rnJ2V4Jmy-pbjZ2qiXBugsmJ7GzypFov',
+    salarySlip: '13ZTy1kafDuRwlGVCjehDh6RaqslMguQi'
+  };
 
   // Fetch all necessary data
   const fetchAllData = async () => {
     setLoading(true);
     setTableLoading(true);
     setError(null);
-    
+
     try {
       // Fetch INDENT data
       const indentResponse = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
       );
-      
+
       if (!indentResponse.ok) {
         throw new Error(`HTTP error! status: ${indentResponse.status}`);
       }
-      
+
       const indentResult = await indentResponse.json();
-      
+
       if (indentResult.success && indentResult.data && indentResult.data.length >= 7) {
         const headers = indentResult.data[5].map(h => h.trim());
         const dataFromRow7 = indentResult.data.slice(6);
-        
+
         const getIndex = (headerName) => headers.findIndex(h => h === headerName);
-        
+
         const processedData = dataFromRow7
           .filter(row => {
             const status = row[getIndex('Status')];
             const planned2 = row[getIndex('Planned 2')];
             const actual2 = row[getIndex('Actual 2')];
-            
-            return status === 'NeedMore' && 
-                   planned2 && 
-                   (!actual2 || actual2 === '');
+
+            return status === 'NeedMore' &&
+              planned2 &&
+              (!actual2 || actual2 === '');
           })
           .map(row => ({
             id: row[getIndex('Timestamp')],
@@ -84,10 +92,10 @@ const [formData, setFormData] = useState({
             plannedDate: row[getIndex('Planned 2')],
             actual: row[getIndex('Actual 2')]
           }));
-         const pendingTasks = processedData.filter(
-        task => task.plannedDate && !task.actual
-      );
-      
+        const pendingTasks = processedData.filter(
+          task => task.plannedDate && !task.actual
+        );
+
         setIndentData(pendingTasks);
       } else {
         throw new Error(indentResult.error || 'Not enough rows in INDENT sheet data');
@@ -97,20 +105,20 @@ const [formData, setFormData] = useState({
       const enquiryResponse = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=ENQUIRY&action=fetch'
       );
-      
+
       if (!enquiryResponse.ok) {
         throw new Error(`HTTP error! status: ${enquiryResponse.status}`);
       }
-      
+
       const enquiryResult = await enquiryResponse.json();
-      
+
       if (enquiryResult.success && enquiryResult.data && enquiryResult.data.length > 0) {
         // First row contains headers (row 6 in your sheet)
         const headers = enquiryResult.data[5].map(h => h ? h.trim() : '');
         const enquiryRows = enquiryResult.data.slice(6);
-        
+
         const getEnquiryIndex = (headerName) => headers.findIndex(h => h === headerName);
-        
+
         const processedEnquiryData = enquiryRows
           .filter(row => row[getEnquiryIndex('Timestamp')]) // Filter out empty rows
           .map(row => ({
@@ -135,13 +143,13 @@ const [formData, setFormData] = useState({
             presentAddress: row[getEnquiryIndex('Present Address')] || '',
             aadharNo: row[getEnquiryIndex('Aadhar No')] || ''
           }));
-        
+
         setEnquiryData(processedEnquiryData);
-       // addEnquiry(processedEnquiryData);
+        // addEnquiry(processedEnquiryData);
       } else {
         throw new Error(enquiryResult.error || 'Not enough rows in ENQUIRY sheet data');
       }
-      
+
     } catch (error) {
       console.error('Error fetching data:', error);
       setError(error.message);
@@ -157,11 +165,11 @@ const [formData, setFormData] = useState({
     if (enquiryData.length === 0) {
       return 'ENQ-01';
     }
-    
+
     // Find the highest existing candidate number
     const lastNumber = enquiryData.reduce((max, enquiry) => {
       if (!enquiry.candidateEnquiryNo) return max;
-      
+
       const match = enquiry.candidateEnquiryNo.match(/ENQ-(\d+)/i);
       if (match && match[1]) {
         const num = parseInt(match[1], 10);
@@ -169,47 +177,136 @@ const [formData, setFormData] = useState({
       }
       return max;
     }, 0);
-    
+
     const nextNumber = lastNumber + 1;
     return `ENQ-${String(nextNumber).padStart(2, '0')}`;
   };
 
-  // Convert file to base64
-  const fileToBase64 = (file) => {
+  // Compress image before upload to drastically reduce size and upload time
+  const compressImage = (file) => {
     return new Promise((resolve, reject) => {
+      // Only compress images
+      if (!file.type.startsWith('image/')) {
+        resolve(file);
+        return;
+      }
+
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = error => reject(error);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Compress to JPEG with 0.7 quality
+          canvas.toBlob((blob) => {
+            if (blob) {
+              // Create a new file from the blob
+              const compressedFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              resolve(file); // Fallback to original if compression fails
+            }
+          }, 'image/jpeg', 0.7);
+        };
+        img.onerror = () => resolve(file); // Fallback on error
+      };
+      reader.onerror = () => resolve(file); // Fallback on error
     });
+  };
+
+  // Convert file (potentially compressed) to base64
+  const fileToBase64 = async (originalFile) => {
+    try {
+      const fileToProcess = await compressImage(originalFile);
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(fileToProcess);
+        reader.onload = () => resolve({ base64: reader.result, type: fileToProcess.type });
+        reader.onerror = error => reject(error);
+      });
+    } catch (err) {
+      console.warn('Compression failed, falling back to original file', err);
+      // Fallback to original without compression
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(originalFile);
+        reader.onload = () => resolve({ base64: reader.result, type: originalFile.type });
+        reader.onerror = error => reject(error);
+      });
+    }
   };
 
   // Upload file to Google Drive
   const uploadFileToGoogleDrive = async (file, type, folderId) => {
+    if (!file) return '';
     try {
-      const base64Data = await fileToBase64(file);
-      
+      const fileData = await fileToBase64(file);
+      if (!fileData || !fileData.base64) throw new Error('Failed to convert file to base64');
+
+      const candidatePrefix = generatedCandidateNo || 'CANDIDATE';
+      const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_') : 'file';
+
+      const params = new URLSearchParams();
+      params.append('action', 'uploadFile');
+      params.append('sheetName', 'ENQUIRY'); // Passing dummy sheetName because Google Apps Script doPost crashes on undefined.replace
+      params.append('base64Data', fileData.base64);
+      params.append('fileName', `${candidatePrefix}_${type}_${safeName}`);
+      params.append('mimeType', fileData.type || 'application/octet-stream');
+      params.append('folderId', folderId);
+
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            action: 'uploadFile',
-            base64Data: base64Data,
-            fileName: `${generatedCandidateNo}_${type}_${file.name}`,
-            mimeType: file.type,
-            folderId: folderId
-          }),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString(),
         }
       );
 
       const result = await response.json();
+
+      let finalUrl = result.fileUrl;
       
-      if (result.success) {
-        return result.fileUrl;
+      // Handle the case where the backend returns an object or a stringified map `{fileId=..., fileUrl=https...}`
+      if (finalUrl) {
+        if (typeof finalUrl === 'object') {
+          finalUrl = finalUrl.fileUrl || finalUrl;
+        } else if (typeof finalUrl === 'string' && finalUrl.startsWith('{') && finalUrl.includes('fileUrl=')) {
+          const match = finalUrl.match(/fileUrl=([^,}]+)/);
+          if (match && match[1]) {
+            finalUrl = match[1].trim();
+          }
+        }
+      }
+
+      if (result.success && finalUrl) {
+        return finalUrl;
       } else {
         throw new Error(result.error || 'File upload failed');
       }
@@ -265,200 +362,214 @@ const [formData, setFormData] = useState({
     return `${year}-${month}-${day}`;
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setSubmitting(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
 
-  try {
-    let photoUrl = '';
-    let resumeUrl = '';
+    try {
+      let photoUrl = '';
+      let resumeUrl = '';
 
-    // Upload photo if exists
-    if (formData.candidatePhoto) {
-      setUploadingPhoto(true);
-      photoUrl = await uploadFileToGoogleDrive(formData.candidatePhoto, 'photo', '145FIQRxwN_omuW2XPHx-Bbk8kFOpzosd');
-      setUploadingPhoto(false);
-      toast.success('Photo uploaded successfully!');
-    }
-
-    // Upload resume if exists
-    if (formData.candidateResume) {
-      setUploadingResume(true);
-      resumeUrl = await uploadFileToGoogleDrive(formData.candidateResume, 'resume', '1rnJ2V4Jmy-pbjZ2qiXBugsmJ7GzypFov');
-      setUploadingResume(false);
-      toast.success('Resume uploaded successfully!');
-    }
-
-    const now = new Date();
-    const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-
-    const rowData = [
-      formattedTimestamp,                           // Column A: Timestamp
-      selectedItem.indentNo,                        // Column B: Indent Number
-      generatedCandidateNo,                         // Column C: Candidate Enquiry Number
-      selectedItem.post,                            // Column D: Applying For the Post
-      formData.candidateName,                       // Column E: Candidate Name
-      formatDOB(formData.candidateDOB),            // Column F: DCB (DOB)
-      formData.candidatePhone,                      // Column G: Candidate Phone Number
-      formData.candidateEmail,                      // Column H: Candidate Email
-      formData.previousCompany || '',               // Column I: Previous Company Name
-      formData.jobExperience || '',                 // Column J: Job Experience
-      '',                    // Column K: Last Salary
-      formData.previousPosition || '',              // Column L: Previous Position
-      '',              // Column M: Reason For Leaving
-      formData.maritalStatus || '',                 // Column N: Marital Status
-      '',            // Column O: Last Employer Mobile
-      photoUrl,                                     // Column P: Candidate Photo (URL)
-      '',                   // Column Q: Reference By
-      formData.presentAddress || '',                // Column R: Present Address
-      formData.aadharNo || '',                      // Column S: Aadhar No
-      resumeUrl,                                    // Column T: Candidate Resume (URL)
-    ];
-
-    console.log('Submitting to ENQUIRY sheet:', rowData);
-
-    // Submit to ENQUIRY sheet
-    const enquiryResponse = await fetch(
-      'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          sheetName: 'ENQUIRY',
-          action: 'insert',
-          rowData: JSON.stringify(rowData)
-        }),
+      // Upload photo if exists (non-blocking — form submits even if upload fails)
+      if (formData.candidatePhoto) {
+        setUploadingPhoto(true);
+        try {
+          photoUrl = await uploadFileToGoogleDrive(formData.candidatePhoto, 'photo', '145FIQRxwN_omuW2XPHx-Bbk8kFOpzosd');
+          toast.success('Photo uploaded successfully!');
+        } catch (uploadErr) {
+          console.warn('Photo upload failed, continuing without photo:', uploadErr);
+          toast.error('Photo upload failed — form will still submit.');
+          photoUrl = '';
+        } finally {
+          setUploadingPhoto(false);
+        }
       }
-    );
 
-    const enquiryResult = await enquiryResponse.json();
-    console.log('ENQUIRY response:', enquiryResult);
+      // Upload resume if exists (non-blocking — form submits even if upload fails)
+      if (formData.candidateResume) {
+        setUploadingResume(true);
+        try {
+          resumeUrl = await uploadFileToGoogleDrive(formData.candidateResume, 'resume', '1rnJ2V4Jmy-pbjZ2qiXBugsmJ7GzypFov');
+          toast.success('Resume uploaded successfully!');
+        } catch (uploadErr) {
+          console.warn('Resume upload failed, continuing without resume:', uploadErr);
+          toast.error('Resume upload failed — form will still submit.');
+          resumeUrl = '';
+        } finally {
+          setUploadingResume(false);
+        }
+      }
 
-    if (!enquiryResult.success) {
-      throw new Error(enquiryResult.error || 'ENQUIRY submission failed');
-    }
+      const now = new Date();
+      const formattedTimestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-    // Only update INDENT sheet if status is Complete
-    if (formData.status === 'Complete') {
-      console.log('Updating INDENT sheet for status Complete');
-      
-      // Fetch INDENT data
-      const indentFetchResponse = await fetch(
-        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
+      const rowData = [
+        formattedTimestamp,                           // Column A: Timestamp
+        selectedItem.indentNo,                        // Column B: Indent Number
+        generatedCandidateNo,                         // Column C: Candidate Enquiry Number
+        selectedItem.post,                            // Column D: Applying For the Post
+        formData.candidateName,                       // Column E: Candidate Name
+        formatDOB(formData.candidateDOB),            // Column F: DCB (DOB)
+        formData.candidatePhone,                      // Column G: Candidate Phone Number
+        formData.candidateEmail,                      // Column H: Candidate Email
+        formData.previousCompany || '',               // Column I: Previous Company Name
+        formData.jobExperience || '',                 // Column J: Job Experience
+        '',                                           // Column K: Last Salary
+        formData.previousPosition || '',              // Column L: Previous Position
+        '',                                           // Column M: Reason For Leaving
+        formData.maritalStatus || '',                 // Column N: Marital Status
+        '',                                           // Column O: Last Employer Mobile
+        photoUrl || '',                               // Column P: Candidate Photo (URL)
+        '',                                           // Column Q: Reference By
+        formData.presentAddress || '',                // Column R: Present Address
+        formData.aadharNo || '',                      // Column S: Aadhar No
+        resumeUrl || '',                              // Column T: Candidate Resume (URL)
+      ];
+
+      console.log('Submitting to ENQUIRY sheet:', rowData);
+
+      // Submit to ENQUIRY sheet
+      const enquiryResponse = await fetch(
+        'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            sheetName: 'ENQUIRY',
+            action: 'insert',
+            rowData: JSON.stringify(rowData)
+          }),
+        }
       );
-      
-      const indentData = await indentFetchResponse.json();
-      console.log('INDENT data fetched:', indentData);
 
-      if (!indentData.success) {
-        throw new Error('Failed to fetch INDENT data: ' + (indentData.error || 'Unknown error'));
+      const enquiryResult = await enquiryResponse.json();
+      console.log('ENQUIRY response:', enquiryResult);
+
+      if (!enquiryResult.success) {
+        throw new Error(enquiryResult.error || 'ENQUIRY submission failed');
       }
 
-      // Find the row index
-      let rowIndex = -1;
-      for (let i = 1; i < indentData.data.length; i++) {
-        if (indentData.data[i][1] === selectedItem.indentNo) {
-          rowIndex = i + 1; // Spreadsheet rows start at 1
-          break;
-        }
-      }
+      // Only update INDENT sheet if status is Complete
+      if (formData.status === 'Complete') {
+        console.log('Updating INDENT sheet for status Complete');
 
-      if (rowIndex === -1) {
-        throw new Error(`Could not find indentNo: ${selectedItem.indentNo} in INDENT sheet`);
-      }
-
-      console.log('Found row index:', rowIndex);
-
-      // Get headers
-      const headers = indentData.data[5];
-      console.log('Headers:', headers);
-
-      // Find column indices
-      const getColumnIndex = (columnName) => {
-        return headers.findIndex(h => h && h.toString().trim() === columnName);
-      };
-
-      const statusIndex = getColumnIndex('Status');
-      const actual2Index = getColumnIndex('Actual 2');
-
-      console.log('Status column index:', statusIndex);
-      console.log('Actual 2 column index:', actual2Index);
-
-      // Update Status column
-      if (statusIndex !== -1) {
-        console.log('Updating Status column...');
-        const statusResponse = await fetch(
-          'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              sheetName: 'INDENT',
-              action: 'updateCell',
-              rowIndex: rowIndex.toString(),
-              columnIndex: (statusIndex + 1).toString(), // Convert to string
-              value: 'Complete'
-            }),
-          }
+        // Fetch INDENT data
+        const indentFetchResponse = await fetch(
+          'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=INDENT&action=fetch'
         );
 
-        const statusResult = await statusResponse.json();
-        console.log('Status update result:', statusResult);
+        const indentData = await indentFetchResponse.json();
+        console.log('INDENT data fetched:', indentData);
 
-        if (!statusResult.success) {
-          console.error('Status update failed:', statusResult.error);
+        if (!indentData.success) {
+          throw new Error('Failed to fetch INDENT data: ' + (indentData.error || 'Unknown error'));
         }
-      }
 
-      // Update Actual 2 column
-      if (actual2Index !== -1) {
-        console.log('Updating Actual 2 column...');
-        const actual2Response = await fetch(
-          'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              sheetName: 'INDENT',
-              action: 'updateCell',
-              rowIndex: rowIndex.toString(),
-              columnIndex: (actual2Index + 1).toString(), // Convert to string
-              value: formattedTimestamp
-            }),
+        // Find the row index
+        let rowIndex = -1;
+        for (let i = 1; i < indentData.data.length; i++) {
+          if (indentData.data[i][1] === selectedItem.indentNo) {
+            rowIndex = i + 1; // Spreadsheet rows start at 1
+            break;
           }
-        );
-
-        const actual2Result = await actual2Response.json();
-        console.log('Actual 2 update result:', actual2Result);
-
-        if (!actual2Result.success) {
-          console.error('Actual 2 update failed:', actual2Result.error);
         }
+
+        if (rowIndex === -1) {
+          throw new Error(`Could not find indentNo: ${selectedItem.indentNo} in INDENT sheet`);
+        }
+
+        console.log('Found row index:', rowIndex);
+
+        // Get headers
+        const headers = indentData.data[5];
+        console.log('Headers:', headers);
+
+        // Find column indices
+        const getColumnIndex = (columnName) => {
+          return headers.findIndex(h => h && h.toString().trim() === columnName);
+        };
+
+        const statusIndex = getColumnIndex('Status');
+        const actual2Index = getColumnIndex('Actual 2');
+
+        console.log('Status column index:', statusIndex);
+        console.log('Actual 2 column index:', actual2Index);
+
+        // Update Status column
+        if (statusIndex !== -1) {
+          console.log('Updating Status column...');
+          const statusResponse = await fetch(
+            'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({
+                sheetName: 'INDENT',
+                action: 'updateCell',
+                rowIndex: rowIndex.toString(),
+                columnIndex: (statusIndex + 1).toString(), // Convert to string
+                value: 'Complete'
+              }),
+            }
+          );
+
+          const statusResult = await statusResponse.json();
+          console.log('Status update result:', statusResult);
+
+          if (!statusResult.success) {
+            console.error('Status update failed:', statusResult.error);
+          }
+        }
+
+        // Update Actual 2 column
+        if (actual2Index !== -1) {
+          console.log('Updating Actual 2 column...');
+          const actual2Response = await fetch(
+            'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({
+                sheetName: 'INDENT',
+                action: 'updateCell',
+                rowIndex: rowIndex.toString(),
+                columnIndex: (actual2Index + 1).toString(), // Convert to string
+                value: formattedTimestamp
+              }),
+            }
+          );
+
+          const actual2Result = await actual2Response.json();
+          console.log('Actual 2 update result:', actual2Result);
+
+          if (!actual2Result.success) {
+            console.error('Actual 2 update failed:', actual2Result.error);
+          }
+        }
+
+        toast.success('Enquiry submitted and INDENT marked as Complete!');
+      } else {
+        toast.success('Enquiry submitted successfully!');
       }
-      
-      toast.success('Enquiry submitted and INDENT marked as Complete!');
-    } else {
-      toast.success('Enquiry submitted successfully!');
+
+      setShowModal(false);
+      fetchAllData();
+
+    } catch (error) {
+      console.error('Submission error:', error);
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setSubmitting(false);
+      setUploadingPhoto(false);
+      setUploadingResume(false);
     }
-
-    setShowModal(false);
-    fetchAllData();
-
-  } catch (error) {
-    console.error('Submission error:', error);
-    toast.error(`Error: ${error.message}`);
-  } finally {
-    setSubmitting(false);
-    setUploadingPhoto(false);
-    setUploadingResume(false);
-  }
-};
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -486,14 +597,14 @@ const handleSubmit = async (e) => {
 
   const filteredPendingData = indentData.filter(item => {
     const matchesSearch = item.post?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
   const filteredHistoryData = historyData.filter(item => {
     const matchesSearch = item.candidateName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.candidateEnquiryNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.candidateEnquiryNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.indentNo?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
@@ -525,22 +636,20 @@ const handleSubmit = async (e) => {
         <div className="border-b border-gray-300 border-opacity-20">
           <nav className="flex -mb-px">
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === 'pending'
-                  ?'border-indigo-500 text-indigo-600'
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'pending'
+                  ? 'border-indigo-500 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
               onClick={() => setActiveTab('pending')}
             >
               <Clock size={16} className="inline mr-2" />
               Pending ({filteredPendingData.length})
             </button>
             <button
-              className={`py-4 px-6 font-medium text-sm border-b-2 ${
-                activeTab === 'history'
+              className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'history'
                   ? 'border-indigo-500 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
               onClick={() => setActiveTab('history')}
             >
               <CheckCircle size={16} className="inline mr-2" />
@@ -652,9 +761,9 @@ const handleSubmit = async (e) => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.jobExperience}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {item.candidatePhoto ? (
-                            <a 
-                              href={item.candidatePhoto} 
-                              target="_blank" 
+                            <a
+                              href={item.candidatePhoto}
+                              target="_blank"
                               rel="noopener noreferrer"
                               className="text-indigo-600 hover:text-indigo-800"
                             >
@@ -664,9 +773,9 @@ const handleSubmit = async (e) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {item.candidateResume ? (
-                            <a 
-                              href={item.candidateResume} 
-                              target="_blank" 
+                            <a
+                              href={item.candidateResume}
+                              target="_blank"
                               rel="noopener noreferrer"
                               className="text-indigo-600 hover:text-indigo-800"
                             >
@@ -695,7 +804,7 @@ const handleSubmit = async (e) => {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Indent No.</label>
                   <input
@@ -861,7 +970,7 @@ const handleSubmit = async (e) => {
                   />
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Present Address</label>
                 <textarea
@@ -932,9 +1041,9 @@ const handleSubmit = async (e) => {
                   </div>
                   <p className="text-xs text-gray-400 mt-1">Max 10MB. Supports: PDF, DOC, DOCX, JPG, JPEG, PNG</p>
                 </div>
-                
+
               </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Status *</label>
                   <select

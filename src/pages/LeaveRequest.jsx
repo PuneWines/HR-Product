@@ -16,6 +16,7 @@ const LeaveRequest = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [employees, setEmployees] = useState([]);
+  const [nextSerialNo, setNextSerialNo] = useState('SN-01');
   const [formData, setFormData] = useState({
     employeeId: employeeId,
     employeeName: user.Name || '',
@@ -216,6 +217,22 @@ useEffect(() => {
 
       const dataRows = rawData.length > 1 ? rawData.slice(1) : [];
       
+      // Calculate next Serial Number (SN-01, SN-02, etc.)
+      let maxSerial = 0;
+      dataRows.forEach(row => {
+        const snStr = row[1]; // Column B: Serial No
+        if (snStr !== null && snStr !== undefined) {
+          const str = String(snStr).trim();
+          if (str.startsWith('SN-')) {
+            const num = parseInt(str.substring(3), 10);
+            if (!isNaN(num) && num > maxSerial) {
+              maxSerial = num;
+            }
+          }
+        }
+      });
+      setNextSerialNo(`SN-${String(maxSerial + 1).padStart(2, '0')}`);
+      
       // Process and filter data by employee name
       const processedData = dataRows
         .map((row, index) => ({
@@ -268,7 +285,7 @@ useEffect(() => {
 
       const rowData = [
         formattedTimestamp,           // Timestamp
-        "",                          // Serial number (empty for auto-increment)
+        nextSerialNo,                 // Serial number (SN-01, SN-02, etc.)
         formData.employeeId,         // Employee ID
         formData.employeeName,       // Employee Name
         formatDOB(formData.fromDate), // Leave Date Start
