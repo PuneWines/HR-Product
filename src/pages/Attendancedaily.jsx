@@ -107,6 +107,23 @@ const Attendancedaily = () => {
     return strVal;
   };
 
+  const formatTimeAMPM = (timeStr) => {
+    if (!timeStr || timeStr === '-') return '-';
+    if (timeStr.startsWith('-')) return timeStr;
+    const parts = timeStr.toString().split(':');
+    if (parts.length < 3) return timeStr;
+    const h = parseInt(parts[0], 10);
+    const m = parts[1];
+    const s = parts[2];
+    
+    const isPM = (h % 24) >= 12;
+    const ampm = isPM ? 'PM' : 'AM';
+    let displayH = h % 12;
+    if (displayH === 0) displayH = 12;
+    
+    return `${displayH.toString().padStart(2, '0')}:${m}:${s} ${ampm}`;
+  };
+
   const startEditing = (item) => {
     setEditingRowId(item.rowIndex);
     setEditData({
@@ -218,11 +235,11 @@ const Attendancedaily = () => {
       'Employee Code': item.employeeCode,
       'Employee Name': item.employeeName,
       'Date': formatSheetDate(item.date),
-      'IN Time': formatRawValue(item.inTime),
-      'OUT Time': formatRawValue(item.outTime),
+      'IN Time': formatTimeAMPM(formatRawValue(item.inTime)),
+      'OUT Time': formatTimeAMPM(formatRawValue(item.outTime)),
       'Total Duration': formatRawValue(item.totalDuration),
       'Total With Lunch Duration': formatRawValue(item.totalWithLunchDuration),
-      'Lunch TIme': formatRawValue(item.lunchTime),
+      'Lunch TIme': formatTimeAMPM(formatRawValue(item.lunchTime)),
       'Actual Total Duration': formatRawValue(item.actualTotalDuration),
       'Status': item.status,
       'Miss Adjust': item.missAdjustCondition,
@@ -346,7 +363,7 @@ const Attendancedaily = () => {
                             value={editData.inTime}
                             onChange={(e) => setEditData({ ...editData, inTime: e.target.value })}
                           />
-                        ) : formatRawValue(item.inTime)}
+                        ) : formatTimeAMPM(formatRawValue(item.inTime))}
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-400">
@@ -356,7 +373,7 @@ const Attendancedaily = () => {
                             value={editData.outTime}
                             onChange={(e) => setEditData({ ...editData, outTime: e.target.value })}
                           />
-                        ) : formatRawValue(item.outTime)}
+                        ) : formatTimeAMPM(formatRawValue(item.outTime))}
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800 font-black">
@@ -370,7 +387,7 @@ const Attendancedaily = () => {
                       </td>
 
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-medium">{formatRawValue(item.totalWithLunchDuration)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-500">{formatRawValue(item.lunchTime)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-500">{formatTimeAMPM(formatRawValue(item.lunchTime))}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-indigo-700">{formatRawValue(item.actualTotalDuration)}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {item.status ? (

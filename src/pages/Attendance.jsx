@@ -63,6 +63,23 @@ const Attendance = () => {
     }
   };
 
+  const formatTimeAMPM = (timeStr) => {
+    if (!timeStr || timeStr === '-') return '-';
+    if (timeStr.startsWith('-')) return timeStr;
+    const parts = timeStr.toString().split(':');
+    if (parts.length < 3) return timeStr;
+    const h = parseInt(parts[0], 10);
+    const m = parts[1];
+    const s = parts[2];
+    
+    const isPM = (h % 24) >= 12;
+    const ampm = isPM ? 'PM' : 'AM';
+    let displayH = h % 12;
+    if (displayH === 0) displayH = 12;
+    
+    return `${displayH.toString().padStart(2, '0')}:${m}:${s} ${ampm}`;
+  };
+
   const fetchAttendanceData = async () => {
     setLoading(true);
     setError(null);
@@ -201,11 +218,11 @@ const Attendance = () => {
           employeeName: g.employeeName,
           designation,
           month: g.month,
-          inTime: secondsToTime(g.inTimeSecs),
-          outTime: secondsToTime(g.outTimeSecs),
+          inTime: formatTimeAMPM(secondsToTime(g.inTimeSecs)),
+          outTime: formatTimeAMPM(secondsToTime(g.outTimeSecs)),
           totalDuration: secondsToTime(g.totalDurationSecs),
           totalWithLunchDuration: secondsToTime(g.totalWithLunchDurationSecs),
-          lunchTime: secondsToTime(g.lunchTimeSecs),
+          lunchTime: formatTimeAMPM(secondsToTime(g.lunchTimeSecs)),
           actualTotalDuration: secondsToTime(g.actualTotalDurationSecs),
           holidays
         };

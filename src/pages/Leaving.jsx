@@ -323,9 +323,9 @@ const Leaving = () => {
         {/* Tab Content */}
         <div className="p-6">
           {activeTab === 'pending' && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-white  ">
-                <thead className="bg-gray-100 ">
+            <div className="overflow-x-auto max-h-[65vh]">
+              <table className="min-w-full divide-y divide-white">
+                <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee ID</th>
@@ -389,9 +389,9 @@ const Leaving = () => {
           )}
 
           {activeTab === 'history' && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-white  ">
-                <thead className="bg-gray-100 ">
+            <div className="overflow-x-auto max-h-[65vh]">
+              <table className="min-w-full divide-y divide-white">
+                <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>

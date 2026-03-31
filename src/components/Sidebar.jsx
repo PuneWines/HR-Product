@@ -71,7 +71,6 @@ const Sidebar = ({ onClose }) => {
   ];
 
   const employeeMenuItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/my-profile', icon: ProfileIcon, label: 'My Profile' },
     { path: '/my-attendance', icon: Clock, label: 'My Attendance' },
     { path: '/leave-request', icon: LeaveIcon, label: 'Leave Request' },

@@ -25,6 +25,11 @@ import Report from './pages/Report';
 import Payroll from './pages/Payroll';
 import MisReport from './pages/MisReport';
 
+const IndexRoute = () => {
+  const user = JSON.parse(localStorage.getItem('user'));
+  return user?.Admin === 'Yes' ? <Dashboard /> : <Navigate to="/my-profile" replace />;
+};
+
 function App() {
   return (
     <div className="gradient-bg min-h-screen">
@@ -38,7 +43,7 @@ function App() {
               <Layout />
             </ProtectedRoute>
           }>
-            <Route index element={<Dashboard />} />
+            <Route index element={<IndexRoute />} />
             <Route path="indent" element={<Indent />} />
             {/* <Route path="social-site" element={<SocialSite />} /> */}
             <Route path="find-enquiry" element={<FindEnquiry />} />

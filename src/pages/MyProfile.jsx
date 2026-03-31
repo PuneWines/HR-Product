@@ -31,7 +31,9 @@ const MyProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({});
   const [profileData, setProfileData] = useState(null);
+  const [rowIndex, setRowIndex] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const printRef = useRef();
 
@@ -105,13 +107,15 @@ const MyProfile = () => {
         resumeCopy: row[39] || '',
       }));
 
-      const profile = processedData.find(p => 
-        p.candidateName?.trim().toLowerCase() === userName.trim().toLowerCase()
+      const foundIndex = dataRows.findIndex(p => 
+        (p[4] || '').toString().trim().toLowerCase() === userName.trim().toLowerCase()
       );
 
-      if (profile) {
+      if (foundIndex !== -1) {
+        const profile = processedData[foundIndex];
         setProfileData(profile);
         setFormData(profile);
+        setRowIndex(foundIndex + 7); // Row 7 in sheet is index 0 in dataRows
         setIsDemo(false);
         localStorage.setItem("employeeId", profile.joiningNo);
       } else {
@@ -136,10 +140,67 @@ const MyProfile = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const hasChanges = () => {
+    if (!profileData || !formData) return false;
+    return (
+      formData.mobileNo !== profileData.mobileNo ||
+      formData.email !== profileData.email ||
+      formData.familyMobileNo !== profileData.familyMobileNo
+    );
+  };
+
   const handleSave = async () => {
-    // Keep update logic consistent with current employee ID search
-    toast.error("Profile updates are currently restricted. Please contact HR.");
-    setIsEditing(false);
+    if (isDemo) {
+      toast.error("Cannot save changes in demo mode");
+      return;
+    }
+
+    if (!hasChanges()) {
+      setIsEditing(false);
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const scriptURL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
+      
+      const updates = [];
+      if (formData.mobileNo !== profileData.mobileNo) {
+        updates.push({ col: 18, val: formData.mobileNo });
+      }
+      if (formData.familyMobileNo !== profileData.familyMobileNo) {
+        updates.push({ col: 19, val: formData.familyMobileNo });
+      }
+      if (formData.email !== profileData.email) {
+        updates.push({ col: 26, val: formData.email });
+      }
+
+      for (const update of updates) {
+        const response = await fetch(scriptURL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            sheetName: 'JOINING',
+            action: 'updateCell',
+            rowIndex: rowIndex.toString(),
+            columnIndex: update.col.toString(),
+            value: update.val
+          })
+        });
+
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Failed to update field');
+      }
+
+      setProfileData({ ...formData });
+      toast.success("Profile updated successfully!");
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handlePrint = () => {
@@ -226,17 +287,51 @@ const MyProfile = () => {
             <Printer size={18} className="mr-2" />
             PRINT DATA
           </button>
-          <button
-            onClick={() => setIsEditing(!isEditing)}
-            className={`flex items-center px-8 py-3 text-sm font-black rounded-2xl transition-all shadow-md active:scale-95 ${
-              isEditing 
-                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
-                : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-200 hover:shadow-xl'
-            }`}
-          >
-            {isEditing ? <X size={18} className="mr-2" /> : <Edit3 size={18} className="mr-2" />}
-            {isEditing ? 'CANCEL EDIT' : 'EDIT PROFILE'}
-          </button>
+          
+          {isEditing ? (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setFormData({ ...profileData });
+                  setIsEditing(false);
+                }}
+                disabled={isSaving}
+                className="flex items-center px-6 py-3 text-sm font-black text-gray-600 bg-gray-100 rounded-2xl hover:bg-gray-200 transition-all disabled:opacity-50"
+              >
+                <X size={18} className="mr-2" />
+                CANCEL
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges() || isSaving}
+                className={`flex items-center px-8 py-3 text-sm font-black rounded-2xl shadow-md transition-all active:scale-95 ${
+                  !hasChanges() || isSaving
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-emerald-200 hover:shadow-xl'
+                }`}
+              >
+                {isSaving ? (
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    SAVING...
+                  </div>
+                ) : (
+                  <>
+                    <Save size={18} className="mr-2" />
+                    SAVE CHANGES
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center px-8 py-3 text-sm font-black bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 hover:shadow-indigo-200 hover:shadow-xl shadow-md transition-all active:scale-95"
+            >
+              <Edit3 size={18} className="mr-2" />
+              EDIT PROFILE
+            </button>
+          )}
         </div>
       </div>
 

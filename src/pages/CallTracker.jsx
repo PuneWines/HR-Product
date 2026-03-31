@@ -94,32 +94,34 @@ const CallTracker = () => {
       const getIndex = (headerName) => enquiryHeaders.findIndex(h => h === headerName);
 
       const processedEnquiryData = enquiryDataFromRow7
-        .filter(row => {
-          const planned = row[20]; // Column U (Planned)
-          const actual = row[21];  // Column V (Actual)
+        .map((row, index) => ({ row, rowIndex: index + 7 }))
+        .filter(item => {
+          const planned = item.row[20]; // Column U (Planned)
+          const actual = item.row[21];  // Column V (Actual)
           return planned && (!actual || actual === '');
         })
-        .map(row => ({
-          id: row[getIndex('Timestamp')],
-          indentNo: row[getIndex('Indent Number')],
-          candidateEnquiryNo: row[getIndex('Candidate Enquiry Number')],
-          applyingForPost: row[getIndex('Applying For the Post')],
-          candidateName: row[getIndex('Candidate Name')],
-          candidateDOB: row[getIndex('DOB')],
-          candidatePhone: row[getIndex('Candidate Phone Number')],
-          candidateEmail: row[getIndex('Candidate Email')],
-          previousCompany: row[getIndex('Previous Company Name')],
-          jobExperience: row[getIndex('Job Experience')] || '',
-          lastSalary: row[getIndex('Last Salary Drawn')] || '',
-          previousPosition: row[getIndex('Previous Position')] || '',
-          reasonForLeaving: row[getIndex('Reason Of Leaving Previous Company')] || '',
-          maritalStatus: row[getIndex('Marital Status')] || '',
-          lastEmployerMobile: row[getIndex('Last Employer Mobile Number')] || '',
-          candidatePhoto: row[getIndex('Candidate Photo')] || '',
-          candidateResume: row[19] || '',
-          referenceBy: row[getIndex('Reference By')] || '',
-          presentAddress: row[getIndex('Present Address')] || '',
-          aadharNo: row[getIndex('Aadhar Number')] || ''
+        .map(item => ({
+          rowIndex: item.rowIndex,
+          id: item.row[getIndex('Timestamp')],
+          indentNo: item.row[getIndex('Indent Number')],
+          candidateEnquiryNo: item.row[getIndex('Candidate Enquiry Number')],
+          applyingForPost: item.row[getIndex('Applying For the Post')],
+          candidateName: item.row[getIndex('Candidate Name')],
+          candidateDOB: item.row[getIndex('DOB')],
+          candidatePhone: item.row[getIndex('Candidate Phone Number')],
+          candidateEmail: item.row[getIndex('Candidate Email')],
+          previousCompany: item.row[getIndex('Previous Company Name')],
+          jobExperience: item.row[getIndex('Job Experience')] || '',
+          lastSalary: item.row[getIndex('Last Salary Drawn')] || '',
+          previousPosition: item.row[getIndex('Previous Position')] || '',
+          reasonForLeaving: item.row[getIndex('Reason Of Leaving Previous Company')] || '',
+          maritalStatus: item.row[getIndex('Marital Status')] || '',
+          lastEmployerMobile: item.row[getIndex('Last Employer Mobile Number')] || '',
+          candidatePhoto: item.row[getIndex('Candidate Photo')] || '',
+          candidateResume: item.row[19] || '',
+          referenceBy: item.row[getIndex('Reference By')] || '',
+          presentAddress: item.row[getIndex('Present Address')] || '',
+          aadharNo: item.row[getIndex('Aadhar Number')] || ''
         }));
 
       setEnquiryData(processedEnquiryData);
@@ -485,6 +487,42 @@ const CallTracker = () => {
 
       // Always post to Follow-Up sheet first, regardless of status
       await postToSheet(rowData);
+      
+      // Update ENQUIRY Sheet cells with Actual Date, Candidate Says, and Status
+      if (selectedItem.rowIndex) {
+        const updateScriptUrl = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
+        const currentDate = new Date();
+        const actualDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+        
+        // V=22 (Actual Date), X=24 (Candidate Says), Y=25 (Status), Z=26 (Next Date)
+        const updates = [
+          { col: 22, val: actualDateStr },
+          { col: 24, val: formData.candidateSays },
+          { col: 25, val: formData.status }
+        ];
+        if (formData.status && !['Joining', 'Reject'].includes(formData.status)) {
+           updates.push({ col: 26, val: formatDOB(formData.nextDate) || '' });
+        }
+        
+        for (const update of updates) {
+          try {
+            await fetch(updateScriptUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                sheetName: "ENQUIRY",
+                action: "updateCell",
+                rowIndex: selectedItem.rowIndex.toString(),
+                columnIndex: update.col.toString(),
+                value: update.val
+              }).toString()
+            });
+          } catch (e) {
+             console.error('Update ENQUIRY cell error:', e);
+          }
+        }
+      }
+
       toast.success('Update successful!');
 
       // If status is Joining, show the joining modal after successful submission
@@ -621,8 +659,7 @@ const CallTracker = () => {
       rowData[37] = joiningFormData.paymentMode;   // Payment Mode
       rowData[38] = fileUrls.salarySlip;          // Salary Slip (Column AM)
       rowData[39] = fileUrls.resumeCopy;          // Resume Copy (Column AN)
-      const actualDate = new Date();
-      rowData[43] = `${actualDate.getFullYear()}-${String(actualDate.getMonth() + 1).padStart(2, '0')}-${String(actualDate.getDate()).padStart(2, '0')}`; // Actual Date (Column AR)
+      rowData[43] = '';                           // Actual Date (Column AR) - Will be set in After Joining Work
 
       await postToJoiningSheet(rowData);
 
