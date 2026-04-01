@@ -16,7 +16,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    strictPort: true
+    strictPort: true,
+    proxy: {
+      '/api/device-logs': {
+        target: 'http://103.195.203.77:15167',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/device-logs/, '/api/v2/WebAPI/GetDeviceLogs')
+      }
+    }
   },
   preview: {
     host: '0.0.0.0',

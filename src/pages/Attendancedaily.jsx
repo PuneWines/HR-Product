@@ -25,7 +25,7 @@ const Attendancedaily = () => {
     try {
       const queryStart = startDate || '2026-03-01';
       const queryEnd = endDate || '2026-03-31';
-      const API_URL = `http://103.195.203.77:15167/api/v2/WebAPI/GetDeviceLogs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.name}&FromDate=${queryStart}&ToDate=${queryEnd}`;
+      const API_URL = `/api/device-logs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.name}&FromDate=${queryStart}&ToDate=${queryEnd}`;
 
       const response = await fetch(API_URL);
 
