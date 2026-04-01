@@ -348,7 +348,7 @@ const Dashboard = () => {
     try {
       const start = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1);
       const end = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0);
-      
+
       const formatString = (d) => {
         const dd = String(d.getDate()).padStart(2, '0');
         const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -362,7 +362,7 @@ const Dashboard = () => {
 
       const today = new Date();
       if (today.getMonth() === start.getMonth() && today.getFullYear() === start.getFullYear()) {
-         totalDaysInMonth = today.getDate();
+        totalDaysInMonth = today.getDate();
       }
 
       const API_URL = `http://103.195.203.77:15167/api/v2/WebAPI/GetDeviceLogs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.name}&FromDate=${queryStart}&ToDate=${queryEnd}`;
@@ -387,7 +387,7 @@ const Dashboard = () => {
         const presentCount = emp.presentDates.size;
         return {
           employeeCode: emp.code,
-          attendanceDate: `${MONTHS.find(m => m.value === selectedMonth)?.label} ${selectedYear}`, 
+          attendanceDate: `${MONTHS.find(m => m.value === selectedMonth)?.label} ${selectedYear}`,
           totalPresent: presentCount,
           totalAbsent: totalDaysInMonth - presentCount
         };
@@ -613,7 +613,7 @@ const Dashboard = () => {
                   </td>
                 </tr>
               ) : attendanceData.length > 0 ? (
-                attendanceData.sort((a,b) => b.totalPresent - a.totalPresent).map((item, index) => (
+                attendanceData.sort((a, b) => b.totalPresent - a.totalPresent).map((item, index) => (
                   <tr key={index} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border-l-2 border-transparent hover:border-indigo-500">
                       {item.employeeCode}
@@ -630,7 +630,7 @@ const Dashboard = () => {
                   </tr>
                 ))
               ) : (
-                 <tr>
+                <tr>
                   <td colSpan="4" className="px-6 py-16 text-center">
                     <p className="font-bold text-gray-400">No Attendance Records Found</p>
                   </td>
