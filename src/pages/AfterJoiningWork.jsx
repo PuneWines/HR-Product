@@ -329,28 +329,13 @@ const AfterJoiningWork = () => {
 
       const startColumnIndex = 43;
 
-      const updatePromises = [];
+      const updates = [];
 
-      if (allFieldsYes) {
-        updatePromises.push(
-          fetch(
-            "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: new URLSearchParams({
-                sheetName: "JOINING",
-                action: "updateCell",
-                rowIndex: (rowIndex + 1).toString(),
-                columnIndex: (startColumnIndex + 1).toString(),
-                value: actualDate,
-              }).toString(),
-            }
-          )
-        );
-      }
+      // Always push Actual Date update first
+      updates.push({
+        col: startColumnIndex + 1,
+        val: actualDate
+      });
 
       const fields = [
         { value: formData.checkSalarySlipResume ? "Yes" : "No", offset: 2 },
@@ -365,8 +350,17 @@ const AfterJoiningWork = () => {
       ];
 
       fields.forEach((field) => {
-        updatePromises.push(
-          fetch(
+        updates.push({
+          col: field.columnIndex ? field.columnIndex : startColumnIndex + field.offset + 1,
+          val: field.value
+        });
+      });
+
+      // Execute updates sequentially to avoid Apps Script rate limits or concurrent write dropping
+      let hasError = false;
+      for (const update of updates) {
+        try {
+          const response = await fetch(
             "https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec",
             {
               method: "POST",
@@ -377,30 +371,27 @@ const AfterJoiningWork = () => {
                 sheetName: "JOINING",
                 action: "updateCell",
                 rowIndex: (rowIndex + 1).toString(),
-                columnIndex: field.columnIndex ? field.columnIndex.toString() : (startColumnIndex + field.offset + 1).toString(),
-                value: field.value,
+                columnIndex: update.col.toString(),
+                value: update.val,
               }).toString(),
             }
-          )
-        );
-      });
+          );
+          const result = await response.json();
+          if (!result.success) {
+            hasError = true;
+            console.error("Cell update failed:", result);
+          }
+        } catch (e) {
+          hasError = true;
+          console.error("Update request error:", e);
+        }
+      }
 
-      const responses = await Promise.all(updatePromises);
-      const results = await Promise.all(responses.map((r) => r.json()));
-
-      const hasError = results.some((result) => !result.success);
       if (hasError) {
-        console.error("Some cell updates failed:", results);
-        throw new Error("Some cell updates failed");
+        throw new Error("Some cell updates failed to save properly.");
       }
 
-      if (allFieldsYes) {
-        toast.success("All conditions met! Actual date updated successfully.");
-      } else {
-        toast.success(
-          "Conditions updated successfully. Actual date will be updated when all conditions are met."
-        );
-      }
+      toast.success("After Joining work and Actual Date updated successfully.");
 
       setShowModal(false);
       fetchJoiningData();
@@ -471,8 +462,8 @@ const AfterJoiningWork = () => {
           <nav className="flex -mb-px">
             <button
               className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === "pending"
-                  ? "border-indigo-500 text-indigo-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-indigo-500 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
               onClick={() => setActiveTab("pending")}
             >
@@ -481,8 +472,8 @@ const AfterJoiningWork = () => {
             </button>
             <button
               className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === "history"
-                  ? "border-indigo-500 text-indigo-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-indigo-500 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
               onClick={() => setActiveTab("history")}
             >

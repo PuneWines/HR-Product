@@ -55,41 +55,57 @@ const MisReport = () => {
         const allData = result.data || [];
         if (allData.length > 2) {
           const rows = allData.slice(2);
-          
+
           // Current Date Window logic: Last 7 days EXCLUDING today
           const now = new Date();
           const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          
+
           const startDate = new Date(today);
           startDate.setDate(today.getDate() - 7); // e.g. 23/03/2026
-          
+
           const endDate = new Date(today);
           endDate.setDate(today.getDate() - 1); // e.g. 29/03/2026
-          
+
           // Filter by employee name (Column A, index 0) AND Date Range (Column E, index 4)
           const filtered = rows.filter(row => {
             // 1. Basic row validation
             if (!row[0] || !row[4]) return false;
-            
+
             // 2. Name Match
             const nameMatch = row[0].toString().trim().toLowerCase() === employeeName.toLowerCase().trim();
             if (!nameMatch) return false;
-            
+
             // 3. Date Match (Planned Date in Column E / index 4)
             const plannedDate = parseSheetDate(row[4]);
             if (!plannedDate) return false;
-            
+
             return plannedDate >= startDate && plannedDate <= endDate;
           });
-          
+
           // Sort results by Planned Date (Column E, index 4) - Newest first
           filtered.sort((a, b) => {
             const dateA = parseSheetDate(a[4]);
             const dateB = parseSheetDate(b[4]);
             return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
           });
-          
-          setDetailsData(filtered);
+
+          // Deduplicate to show only unique tasks (by Task name in Column D / index 3)
+          const uniqueTasks = [];
+          const taskNamesSeen = new Set();
+
+          filtered.forEach(row => {
+            const taskName = row[3] ? row[3].toString().trim().toLowerCase() : '';
+            if (taskName) {
+              if (!taskNamesSeen.has(taskName)) {
+                taskNamesSeen.add(taskName);
+                uniqueTasks.push(row);
+              }
+            } else {
+              uniqueTasks.push(row);
+            }
+          });
+
+          setDetailsData(uniqueTasks);
         } else {
           setDetailsData([]);
         }
@@ -224,7 +240,7 @@ const MisReport = () => {
       try {
         const date = new Date(val);
         if (isNaN(date.getTime())) return val;
-        
+
         // Check if it's the 1899 date prefix for durations
         const year = date.getUTCFullYear();
         if (year === 1899 || year === 1900) {

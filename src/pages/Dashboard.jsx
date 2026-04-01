@@ -22,7 +22,9 @@ import {
   TrendingUp,
   Clock,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Calendar,
+  Loader2
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -34,6 +36,34 @@ const Dashboard = () => {
   const [designationData, setDesignationData] = useState([]);
   const [resignations, setResignations] = useState(0);
   const [terminations, setTerminations] = useState(0);
+
+  const DEVICES = [
+    { name: 'BAVDHAN', serial: 'C26238441B1E342D' },
+    { name: 'HINJEWADI', serial: 'AMDB25061400335' },
+    { name: 'WAGHOLI', serial: 'AMDB25061400343' },
+    { name: 'AKOLE', serial: 'C262CC13CF202038' }
+  ];
+
+  const MONTHS = [
+    { label: 'January', value: '01' },
+    { label: 'February', value: '02' },
+    { label: 'March', value: '03' },
+    { label: 'April', value: '04' },
+    { label: 'May', value: '05' },
+    { label: 'June', value: '06' },
+    { label: 'July', value: '07' },
+    { label: 'August', value: '08' },
+    { label: 'September', value: '09' },
+    { label: 'October', value: '10' },
+    { label: 'November', value: '11' },
+    { label: 'December', value: '12' },
+  ];
+
+  const [selectedDevice, setSelectedDevice] = useState(DEVICES[0]);
+  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [attendanceData, setAttendanceData] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
 
   // Mock data for other charts
   const employeeStatusData = [
@@ -313,6 +343,69 @@ const Dashboard = () => {
     return result;
   };
 
+  const fetchAttendanceLogs = async () => {
+    setAttendanceLoading(true);
+    try {
+      const start = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1);
+      const end = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0);
+      
+      const formatString = (d) => {
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${yyyy}-${mm}-${dd}`;
+      };
+
+      const queryStart = formatString(start);
+      const queryEnd = formatString(end);
+      let totalDaysInMonth = end.getDate();
+
+      const today = new Date();
+      if (today.getMonth() === start.getMonth() && today.getFullYear() === start.getFullYear()) {
+         totalDaysInMonth = today.getDate();
+      }
+
+      const API_URL = `http://103.195.203.77:15167/api/v2/WebAPI/GetDeviceLogs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.name}&FromDate=${queryStart}&ToDate=${queryEnd}`;
+
+      const response = await fetch(API_URL);
+      if (!response.ok) throw new Error('API failed');
+
+      const result = await response.json();
+      if (!Array.isArray(result)) throw new Error('Invalid API Data');
+
+      const grouped = {};
+      result.forEach(log => {
+        if (!log.EmployeeCode || !log.LogDate) return;
+        const dateStr = log.LogDate.split(' ')[0];
+        if (!grouped[log.EmployeeCode]) {
+          grouped[log.EmployeeCode] = { code: log.EmployeeCode, presentDates: new Set() };
+        }
+        grouped[log.EmployeeCode].presentDates.add(dateStr);
+      });
+
+      const processed = Object.values(grouped).map(emp => {
+        const presentCount = emp.presentDates.size;
+        return {
+          employeeCode: emp.code,
+          attendanceDate: `${MONTHS.find(m => m.value === selectedMonth)?.label} ${selectedYear}`, 
+          totalPresent: presentCount,
+          totalAbsent: totalDaysInMonth - presentCount
+        };
+      });
+
+      setAttendanceData(processed);
+    } catch (err) {
+      console.error('Error fetching dashboard attendance:', err);
+      setAttendanceData([]);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAttendanceLogs();
+  }, [selectedDevice, selectedMonth, selectedYear]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -476,6 +569,77 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Monthly Attendance Table */}
+      <div className="bg-white rounded-xl shadow-lg border p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center">
+            <Calendar size={20} className="mr-2 text-indigo-500" />
+            Monthly Device Attendance
+          </h2>
+          <div className="flex space-x-4">
+            <select
+              className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-gray-700"
+              value={selectedDevice.name}
+              onChange={(e) => setSelectedDevice(DEVICES.find(d => d.name === e.target.value))}
+            >
+              {DEVICES.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+            </select>
+            <select
+              className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-gray-700"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+            >
+              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto max-h-[400px]">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Employee Code</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Attendance Date</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Present</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Absent</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {attendanceLoading ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-center">
+                    <Loader2 size={32} className="mx-auto animate-spin text-indigo-500 mb-2" />
+                    <p className="text-sm font-medium text-gray-500">Loading Attendance...</p>
+                  </td>
+                </tr>
+              ) : attendanceData.length > 0 ? (
+                attendanceData.sort((a,b) => b.totalPresent - a.totalPresent).map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border-l-2 border-transparent hover:border-indigo-500">
+                      {item.employeeCode}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-700 bg-indigo-50/30">
+                      {item.attendanceDate}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600">
+                      {item.totalPresent} <span className="text-xs text-gray-400 font-medium">Days</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-500">
+                      {item.totalAbsent > 0 ? `${item.totalAbsent} Days` : '-'}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                 <tr>
+                  <td colSpan="4" className="px-6 py-16 text-center">
+                    <p className="font-bold text-gray-400">No Attendance Records Found</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
     </div>
   );

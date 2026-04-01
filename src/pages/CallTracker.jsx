@@ -487,13 +487,13 @@ const CallTracker = () => {
 
       // Always post to Follow-Up sheet first, regardless of status
       await postToSheet(rowData);
-      
+
       // Update ENQUIRY Sheet cells with Actual Date, Candidate Says, and Status
       if (selectedItem.rowIndex) {
         const updateScriptUrl = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec';
         const currentDate = new Date();
         const actualDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-        
+
         // V=22 (Actual Date), X=24 (Candidate Says), Y=25 (Status), Z=26 (Next Date)
         const updates = [
           { col: 22, val: actualDateStr },
@@ -501,9 +501,9 @@ const CallTracker = () => {
           { col: 25, val: formData.status }
         ];
         if (formData.status && !['Joining', 'Reject'].includes(formData.status)) {
-           updates.push({ col: 26, val: formatDOB(formData.nextDate) || '' });
+          updates.push({ col: 26, val: formatDOB(formData.nextDate) || '' });
         }
-        
+
         for (const update of updates) {
           try {
             await fetch(updateScriptUrl, {
@@ -518,7 +518,7 @@ const CallTracker = () => {
               }).toString()
             });
           } catch (e) {
-             console.error('Update ENQUIRY cell error:', e);
+            console.error('Update ENQUIRY cell error:', e);
           }
         }
       }
@@ -717,8 +717,8 @@ const CallTracker = () => {
           <nav className="flex -mb-px">
             <button
               className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'pending'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               onClick={() => setActiveTab('pending')}
             >
@@ -727,8 +727,8 @@ const CallTracker = () => {
             </button>
             <button
               className={`py-4 px-6 font-medium text-sm border-b-2 ${activeTab === 'history'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               onClick={() => setActiveTab('history')}
             >
@@ -804,18 +804,18 @@ const CallTracker = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.candidateEmail}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <span className={`px-2 py-1 text-xs rounded-full ${(() => {
-                              const latestFollowUp = [...followUpData].reverse().find(f => f.enquiryNo === item.candidateEnquiryNo);
-                              const status = latestFollowUp ? latestFollowUp.status : 'New';
-                              return status === 'Joining'
-                                ? 'bg-green-100 text-green-800'
-                                : status === 'Reject'
-                                  ? 'bg-red-100 text-red-800'
-                                  : status === 'Interview'
-                                    ? 'bg-purple-100 text-purple-800'
-                                    : status === 'Follow-up'
-                                      ? 'bg-blue-100 text-blue-800'
-                                      : 'bg-gray-100 text-gray-800';
-                            })()
+                            const latestFollowUp = [...followUpData].reverse().find(f => f.enquiryNo === item.candidateEnquiryNo);
+                            const status = latestFollowUp ? latestFollowUp.status : 'New';
+                            return status === 'Joining'
+                              ? 'bg-green-100 text-green-800'
+                              : status === 'Reject'
+                                ? 'bg-red-100 text-red-800'
+                                : status === 'Interview'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : status === 'Follow-up'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-gray-100 text-gray-800';
+                          })()
                             }`}>
                             {(() => {
                               const latestFollowUp = [...followUpData].reverse().find(f => f.enquiryNo === item.candidateEnquiryNo);
@@ -889,10 +889,10 @@ const CallTracker = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.enquiryNo}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <span className={`px-2 py-1 text-xs rounded-full ${item.status === 'Joining'
-                              ? 'bg-green-100 text-green-800'
-                              : item.status === 'Reject'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-blue-100 text-blue-800'
+                            ? 'bg-green-100 text-green-800'
+                            : item.status === 'Reject'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-blue-100 text-blue-800'
                             }`}>
                             {item.status}
                           </span>
