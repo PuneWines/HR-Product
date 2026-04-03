@@ -39,9 +39,9 @@ const Sidebar = ({ onClose }) => {
   const user = userString ? JSON.parse(userString) : null;
 
   const handleLogout = () => {
-  localStorage.removeItem('user');
-  navigate('/login', { replace: true });
-
+    localStorage.removeItem('user');
+    localStorage.removeItem('employeeId');
+    navigate('/login', { replace: true });
   };
 
   const adminMenuItems = [

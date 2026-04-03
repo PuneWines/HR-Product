@@ -70,21 +70,9 @@ const MyAttendance = () => {
     try {
       const userData = localStorage.getItem('user');
       const user = userData ? JSON.parse(userData) : {};
-      const cachedId = localStorage.getItem("employeeId");
-
-      // Robust identifiers from login session
-      const identifiers = [
-        user.Username,
-        user.username,
-        user.Name,
-        user.name,
-        user.SalesPersonId,
-        user.EmployeeID,
-        user.EmpID,
-        user.id,
-        user.ID,
-        cachedId
-      ].filter(Boolean).map(id => id.toString().trim().toLowerCase());
+      // Strictly match using the logged-in user's Name or Username
+      const loggedInName = (user.Name || user.name || '').toString().trim().toLowerCase();
+      const loggedInUsername = (user.Username || user.username || '').toString().trim().toLowerCase();
 
       // UPDATED SCRIPT URL AND SPREADSHEET ID
       const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybtkq0iB4NTrw5jHcpjkwyncpLZlBGpgADUxq2nuGdX36nWlE2zum-8DBmsQgu-FzhTQ/exec';
@@ -118,9 +106,16 @@ const MyAttendance = () => {
         month: row[12] || '',
         year: row[11] || '',
       })).filter(record => {
-        const colA = record.employeeCode.toString().trim().toLowerCase();
-        const colB = record.employeeName.toString().trim().toLowerCase();
-        return identifiers.some(id => colA === id || colB === id);
+        const rowEmployeeCode = record.employeeCode.toString().trim().toLowerCase();
+        const rowEmployeeName = record.employeeName.toString().trim().toLowerCase();
+        
+        // Priority match by Name
+        if (loggedInName && rowEmployeeName === loggedInName) return true;
+        
+        // Fallback match by Employee Code / Username
+        if (loggedInUsername && rowEmployeeCode === loggedInUsername) return true;
+
+        return false;
       });
 
       if (processedData.length > 0) {

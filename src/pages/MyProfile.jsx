@@ -6,7 +6,51 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const Section = ({ title, icon: Icon, children }) => (
+  <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden mb-8 hover:shadow-md transition-shadow">
+    <div className="bg-gray-50/50 px-8 py-5 border-b border-gray-100 flex items-center gap-3">
+      <div className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
+         <Icon size={20} className="text-indigo-600" />
+      </div>
+      <h3 className="font-black text-gray-800 uppercase tracking-[0.15em] text-xs">{title}</h3>
+    </div>
+    <div className="p-8">{children}</div>
+  </div>
+);
+
+const InfoField = ({ 
+  label, 
+  value, 
+  icon: Icon, 
+  name, 
+  isEditable = false, 
+  isEditing = false, 
+  formData = {}, 
+  onChange = () => {}, 
+  onFocus = () => {} 
+}) => (
+  <div className="group">
+    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2">
+      {Icon && <Icon size={12} className="text-indigo-400" />}
+      {label}
+    </label>
+    {isEditable ? (
+      <input
+        type="text"
+        name={name}
+        value={formData[name] || ''}
+        onChange={onChange}
+        onFocus={onFocus}
+        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium"
+      />
+    ) : (
+      <p className="text-gray-900 font-bold text-base tracking-tight">{value || '---'}</p>
+    )}
+  </div>
+);
+
 const MyProfile = () => {
+
   const DUMMY_PROFILE = {
     joiningNo: 'EMP-DEMO-001',
     candidateName: 'John Doe',
@@ -49,10 +93,8 @@ const MyProfile = () => {
   const fetchJoiningData = async () => {
     try {
       const userData = localStorage.getItem('user');
-      if (!userData) throw new Error('No user data found in localStorage');
-
-      const currentUser = JSON.parse(userData);
-      const userName = currentUser.Name;
+      const user = userData ? JSON.parse(userData) : {};
+      const cachedId = localStorage.getItem("employeeId");
 
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch'
@@ -107,9 +149,22 @@ const MyProfile = () => {
         resumeCopy: row[39] || '',
       }));
 
-      const foundIndex = dataRows.findIndex(p => 
-        (p[4] || '').toString().trim().toLowerCase() === userName.trim().toLowerCase()
-      );
+      // Strictly match using the logged-in user's Name or Username
+      const loggedInName = (user.Name || user.name || '').toString().trim().toLowerCase();
+      const loggedInUsername = (user.Username || user.username || '').toString().trim().toLowerCase();
+
+      const foundIndex = dataRows.findIndex(p => {
+        const rowJoiningNo = (p[1] || '').toString().trim().toLowerCase();
+        const rowCandidateName = (p[4] || '').toString().trim().toLowerCase();
+        
+        // Priority match by Name as per user request
+        if (loggedInName && rowCandidateName === loggedInName) return true;
+        
+        // Fallback match by Joining No / Username
+        if (loggedInUsername && (rowJoiningNo === loggedInUsername)) return true;
+
+        return false;
+      });
 
       if (foundIndex !== -1) {
         const profile = processedData[foundIndex];
@@ -232,37 +287,9 @@ const MyProfile = () => {
     );
   }
 
-  const Section = ({ title, icon: Icon, children }) => (
-    <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden mb-8 hover:shadow-md transition-shadow">
-      <div className="bg-gray-50/50 px-8 py-5 border-b border-gray-100 flex items-center gap-3">
-        <div className="p-2 bg-white rounded-xl shadow-sm border border-gray-100">
-           <Icon size={20} className="text-indigo-600" />
-        </div>
-        <h3 className="font-black text-gray-800 uppercase tracking-[0.15em] text-xs">{title}</h3>
-      </div>
-      <div className="p-8">{children}</div>
-    </div>
-  );
-
-  const InfoField = ({ label, value, icon: Icon, name, isEditable = false }) => (
-    <div className="group">
-      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2">
-        {Icon && <Icon size={12} className="text-indigo-400" />}
-        {label}
-      </label>
-      {isEditing && isEditable ? (
-        <input
-          type="text"
-          name={name}
-          value={formData[name] || ''}
-          onChange={handleInputChange}
-          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium"
-        />
-      ) : (
-        <p className="text-gray-900 font-bold text-base tracking-tight">{value || '---'}</p>
-      )}
-    </div>
-  );
+  const handleFieldFocus = () => {
+    if (!isEditing) setIsEditing(true);
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in duration-700 p-6 md:p-10 print:p-0">
@@ -434,9 +461,39 @@ const MyProfile = () => {
 
           <Section title="Contact Information" icon={Smartphone}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
-              <InfoField label="Primary Phone" value={profileData.mobileNo} icon={Phone} name="mobileNo" isEditable={true} />
-              <InfoField label="Email Address" value={profileData.email} icon={MailOpen} name="email" isEditable={true} />
-              <InfoField label="Emergency Contact" value={profileData.familyMobileNo} icon={Phone} name="familyMobileNo" isEditable={true} />
+              <InfoField 
+                label="Primary Phone" 
+                value={profileData.mobileNo} 
+                icon={Phone} 
+                name="mobileNo" 
+                isEditable={true} 
+                isEditing={isEditing} 
+                formData={formData} 
+                onChange={handleInputChange} 
+                onFocus={handleFieldFocus}
+              />
+              <InfoField 
+                label="Email Address" 
+                value={profileData.email} 
+                icon={MailOpen} 
+                name="email" 
+                isEditable={true} 
+                isEditing={isEditing} 
+                formData={formData} 
+                onChange={handleInputChange} 
+                onFocus={handleFieldFocus}
+              />
+              <InfoField 
+                label="Emergency Contact" 
+                value={profileData.familyMobileNo} 
+                icon={Phone} 
+                name="familyMobileNo" 
+                isEditable={true} 
+                isEditing={isEditing} 
+                formData={formData} 
+                onChange={handleInputChange} 
+                onFocus={handleFieldFocus}
+              />
               <InfoField label="Relationship" value={profileData.relationWithFamily} icon={Info} />
             </div>
           </Section>

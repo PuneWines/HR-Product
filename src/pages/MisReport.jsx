@@ -1,520 +1,614 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2, X } from 'lucide-react';
+import { Search, Loader2, Calendar, Filter, Download, TrendingUp, CheckCircle2, AlertCircle, Target } from 'lucide-react';
+
+const MIS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyjCJ04mKT8T3aCfJjj8ENf9GXO8BcAmmDwQBEAocdEjAtuGYflKfcGzfUDXP-vD467/exec';
+const SHEET_ID = '1Itgq_lJIEo1zKqsNIpRvWwGo-qCe0pglnkfu8OeAw4Y';
+
+const getAWeekAgoStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().split('T')[0];
+};
+
+const getTodayStr = () => {
+  const d = new Date();
+  return d.toISOString().split('T')[0];
+};
 
 const MisReport = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [misData, setMisData] = useState({ headers: [], rows: [] });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedCompany, setSelectedCompany] = useState('');
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedEmployeeName, setSelectedEmployeeName] = useState('');
+  const [selectedEmployeeTasks, setSelectedEmployeeTasks] = useState([]);
+  const [selectedEmployeeCompany, setSelectedEmployeeCompany] = useState('');
+
+  const handleClearFilters = () => {
+    setStartDate('');
+    setEndDate('');
+    setSelectedCompany('');
+    setSearchTerm('');
+  };
+
+  const [reportData, setReportData] = useState([]);
+  const [rawDataOriginal, setRawDataOriginal] = useState([]);
+  const [companyList, setCompanyList] = useState([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedCompany, setSelectedCompany] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
 
-  // New states for Modal
-  const [showModal, setShowModal] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [detailsData, setDetailsData] = useState([]);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsError, setDetailsError] = useState(null);
+  const parseDate = (val) => {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
-  const MIS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyCq-NBgm2__EdoDsoe-PMrAdcSgUrA4RguHlE0mWi8OvDaoRm7rXzuOhzh-r59HHA/exec';
-  const DETAIL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyjCJ04mKT8T3aCfJjj8ENf9GXO8BcAmmDwQBEAocdEjAtuGYflKfcGzfUDXP-vD467/exec';
+  const processData = (rawData) => {
+    const grouped = {};
+    const now = new Date();
+    const currentDay = now.getDay();
+
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - currentDay);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    const isCurrentWeek = (d) => d && d >= startOfWeek && d <= endOfWeek;
+
+    rawData.forEach(row => {
+      const company = row[2]; // Column C (Shop Name)
+      const name = row[4];    // Column E (Name)
+      const startDateStr = row[6]; // Column G (Task Start Date)
+      const actualRaw = row[10];   // Column K (Actual)
+
+      if (!name) return;
+      const nameStr = name.toString().trim();
+      const compStr = company ? company.toString().trim() : '';
+      if (!nameStr) return;
+
+      const taskDate = parseDate(startDateStr);
+
+      // Date Filter
+      if (startDate && endDate) {
+        if (!taskDate) return;
+        const sD = new Date(startDate);
+        const eD = new Date(endDate);
+        sD.setHours(0, 0, 0, 0);
+        eD.setHours(23, 59, 59, 999);
+        if (taskDate < sD || taskDate > eD) return;
+      }
+
+      // Company Filter
+      if (selectedCompany && compStr !== selectedCompany) {
+        return;
+      }
+
+      const isActualEmpty = !actualRaw || actualRaw.toString().trim() === '';
+
+      if (!grouped[nameStr]) {
+        grouped[nameStr] = {
+          name: nameStr,
+          minDate: taskDate ? new Date(taskDate) : null,
+          maxDate: taskDate ? new Date(taskDate) : null,
+          target: 0,
+          totalWorkDone: 0,
+          pending: 0,
+          weekPending: 0
+        };
+      }
+
+      const g = grouped[nameStr];
+      g.target += 1;
+
+      if (isActualEmpty) {
+        g.pending += 1;
+        if (isCurrentWeek(taskDate)) {
+          g.weekPending += 1;
+        }
+      } else {
+        g.totalWorkDone += 1;
+      }
+
+      if (taskDate) {
+        if (!g.minDate || taskDate < g.minDate) g.minDate = new Date(taskDate);
+        if (!g.maxDate || taskDate > g.maxDate) g.maxDate = new Date(taskDate);
+      }
+    });
+
+    const processedArr = Object.values(grouped).map(emp => {
+      const actualPct = emp.target > 0 ? (emp.totalWorkDone / emp.target) * 100 : 0;
+      const notDonePct = emp.target > 0 ? (emp.pending / emp.target) * 100 : 0;
+
+      return {
+        ...emp,
+        actualWorkDonePct: Math.round(actualPct),
+        workNotDonePct: Math.round(notDonePct)
+      };
+    });
+
+    processedArr.sort((a, b) => b.actualWorkDonePct - a.actualWorkDonePct);
+    setReportData(processedArr);
+  };
+
+  const handleRowClick = (employeeName) => {
+    // Filter rawDataOriginal based on employee name and existing dashboard filters
+    const tasks = rawDataOriginal.filter(row => {
+      const name = row[4];
+      const company = row[2] || '';
+      const startDateStr = row[6];
+      if (!name || name.toString().trim() !== employeeName) return false;
+      
+      const taskDate = parseDate(startDateStr);
+      // Main filters also apply to modal content
+      if (startDate && endDate) {
+        if (!taskDate) return false;
+        const sD = new Date(startDate);
+        const eD = new Date(endDate);
+        sD.setHours(0, 0, 0, 0);
+        eD.setHours(23, 59, 59, 999);
+        if (taskDate < sD || taskDate > eD) return false;
+      }
+      if (selectedCompany && company.toString().trim() !== selectedCompany) return false;
+      
+      return true;
+    });
+
+    // Sort by date descending (latest tasks first)
+    tasks.sort((a, b) => {
+      const d1 = parseDate(a[6]);
+      const d2 = parseDate(b[6]);
+      return (d2 || 0) - (d1 || 0);
+    });
+
+    const empObj = reportData.find(r => r.name === employeeName);
+    const companyName = rawDataOriginal.find(r => r[4] === employeeName)?.[2] || 'Personal';
+
+    setSelectedEmployeeName(employeeName);
+    setSelectedEmployeeTasks(tasks);
+    setSelectedEmployeeCompany(companyName);
+    setIsModalOpen(true);
+  };
 
   const fetchMisData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${MIS_SCRIPT_URL}?sheet=For Records&action=fetch&spreadsheetId=1_8oh-5kHjGHk6jSSMtawNnSeGYiy5TuxF2UeDzpbI24`);
+      // Trying "All Checklist" as requested.
+      const response = await fetch(`${MIS_SCRIPT_URL}?sheet=${encodeURIComponent('All Checklist')}&action=fetch&spreadsheetId=${SHEET_ID}`);
       const result = await response.json();
+
       if (result.success) {
-        // Range A2:I. Headers are at row 2 (index 1).
-        const allData = result.data || [];
-        if (allData.length > 1) {
-          const headers = allData[1]; // Row 2
-          const dataRows = allData.slice(2); // Data from Row 3 onwards
-          setMisData({ headers, rows: dataRows });
-        }
+        const dataRows = result.data.length > 1 ? result.data.slice(1) : [];
+        setRawDataOriginal(dataRows);
+
+        const companies = new Set();
+        dataRows.forEach(row => {
+          if (row[2] && row[2].toString().trim() !== '') {
+            companies.add(row[2].toString().trim());
+          }
+        });
+        setCompanyList(Array.from(companies).sort());
+
       } else {
         setError(result.error);
       }
     } catch (err) {
-      setError("Failed to fetch MIS data");
+      setError("Failed to fetch dashboard data. Make sure Apps Script is deployed and enabled.");
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchEmployeeDetails = async (employeeName) => {
-    setDetailsLoading(true);
-    setDetailsError(null);
-    setDetailsData([]); // Clear old data immediately
-    try {
-      const response = await fetch(`${DETAIL_SCRIPT_URL}?sheet=MIS&action=fetch&spreadsheetId=1Itgq_lJIEo1zKqsNIpRvWwGo-qCe0pglnkfu8OeAw4Y`);
-      const result = await response.json();
-      if (result.success) {
-        // MIS sheet headers are at index 1, data starts from index 2 (Row 3)
-        const allData = result.data || [];
-        if (allData.length > 2) {
-          const rows = allData.slice(2);
-
-          // Current Date Window logic: Last 7 days EXCLUDING today
-          const now = new Date();
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-          const startDate = new Date(today);
-          startDate.setDate(today.getDate() - 7); // e.g. 23/03/2026
-
-          const endDate = new Date(today);
-          endDate.setDate(today.getDate() - 1); // e.g. 29/03/2026
-
-          // Filter by employee name (Column A, index 0) AND Date Range (Column E, index 4)
-          const filtered = rows.filter(row => {
-            // 1. Basic row validation
-            if (!row[0] || !row[4]) return false;
-
-            // 2. Name Match
-            const nameMatch = row[0].toString().trim().toLowerCase() === employeeName.toLowerCase().trim();
-            if (!nameMatch) return false;
-
-            // 3. Date Match (Planned Date in Column E / index 4)
-            const plannedDate = parseSheetDate(row[4]);
-            if (!plannedDate) return false;
-
-            return plannedDate >= startDate && plannedDate <= endDate;
-          });
-
-          // Sort results by Planned Date (Column E, index 4) - Newest first
-          filtered.sort((a, b) => {
-            const dateA = parseSheetDate(a[4]);
-            const dateB = parseSheetDate(b[4]);
-            return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
-          });
-
-          // Deduplicate to show only unique tasks (by Task name in Column D / index 3)
-          const uniqueTasks = [];
-          const taskNamesSeen = new Set();
-
-          filtered.forEach(row => {
-            const taskName = row[3] ? row[3].toString().trim().toLowerCase() : '';
-            if (taskName) {
-              if (!taskNamesSeen.has(taskName)) {
-                taskNamesSeen.add(taskName);
-                uniqueTasks.push(row);
-              }
-            } else {
-              uniqueTasks.push(row);
-            }
-          });
-
-          setDetailsData(uniqueTasks);
-        } else {
-          setDetailsData([]);
-        }
-      } else {
-        setDetailsError(result.error);
-      }
-    } catch (err) {
-      setDetailsError("Failed to fetch task details");
-    } finally {
-      setDetailsLoading(false);
-    }
-  };
-
-  const handleRowClick = (row) => {
-    const name = row[2] || 'N/A';
-    setSelectedEmployee(row);
-    setShowModal(true);
-    fetchEmployeeDetails(name);
   };
 
   useEffect(() => {
     fetchMisData();
   }, []);
 
-  const parsePercent = (val) => {
-    if (typeof val === 'string' && val.includes('%')) {
-      return parseFloat(val.replace('%', ''));
+  useEffect(() => {
+    if (rawDataOriginal.length > 0) {
+      processData(rawDataOriginal);
     }
-    const num = parseFloat(val);
-    return isNaN(num) ? 0 : num * 100;
-  };
-
-  const ProgressBar = ({ value, color }) => {
-    const safeValue = Math.min(Math.max(0, value), 100);
-    return (
-      <div className="flex items-center space-x-2">
-        <div className="w-24 bg-gray-100 rounded-full h-3">
-          <div
-            className={`h-3 rounded-full transition-all duration-500 ${color}`}
-            style={{ width: `${safeValue}%` }}
-          ></div>
-        </div>
-        <span className="text-xs font-semibold text-gray-500 w-8">{Math.round(safeValue)}%</span>
-      </div>
-    );
-  };
-
-  const Badge = ({ value }) => {
-    const val = parseInt(value);
-    const colors = [
-      'bg-green-100 text-green-700',
-      'bg-yellow-100 text-yellow-700',
-      'bg-blue-100 text-blue-700',
-      'bg-purple-100 text-purple-700',
-      'bg-red-100 text-red-700'
-    ];
-    const colorClass = colors[val % colors.length] || 'bg-gray-100 text-gray-700';
-    return (
-      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold shadow-sm ${colorClass}`}>
-        {value}
-      </span>
-    );
-  };
-
-  const filteredRows = misData.rows.filter(row => {
-    // Search term filter
-    const matchesSearch = row.some(cell =>
-      cell && cell.toString().toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    // Company filter
-    const companyName = row[10] || '';
-    const matchesCompany = !selectedCompany || companyName === selectedCompany;
-
-    // Status filter
-    // 0 or '-' or empty means "Not data"
-    const actualWork = row[4];
-    const isDone = actualWork && parseFloat(actualWork) > 0;
-    const matchesStatus = !selectedStatus ||
-      (selectedStatus === 'not_done' && !isDone) ||
-      (selectedStatus === 'done' && isDone);
-
-    return matchesSearch && matchesCompany && matchesStatus;
-  });
-
-  const companies = Array.from(new Set(misData.rows.map(row => row[10]).filter(Boolean))).sort();
-
-  const getAvatar = (name) => {
-    if (!name) return "👤";
-    const lowerName = name.toLowerCase().trim();
-    // Common endings for female names in India/General
-    const femaleEndings = ['a', 'i', 'ee', 'kumari', 'devi', 'shree', 'shakti'];
-    const femaleNames = ['priya', 'neha', 'pooja', 'sneha', 'anita', 'sunita', 'kavita', 'swati'];
-
-    const isFemale = femaleEndings.some(ending => lowerName.endsWith(ending)) ||
-      femaleNames.some(fName => lowerName.includes(fName));
-
-    return isFemale ? "👩" : "👨";
-  };
-
-  const parseSheetDate = (dateVal) => {
-    if (!dateVal) return null;
-    if (dateVal instanceof Date) {
-      const d = new Date(dateVal);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
-
-    let d = null;
-    // Handle DD/MM/YYYY specifically
-    if (typeof dateVal === 'string' && dateVal.includes('/')) {
-      const parts = dateVal.split('/');
-      if (parts.length === 3) {
-        // parts[0] = DD, parts[1] = MM, parts[2] = YYYY
-        d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-      }
-    } else {
-      d = new Date(dateVal);
-    }
-
-    if (d && !isNaN(d.getTime())) {
-      d.setHours(0, 0, 0, 0);
-      return d;
-    }
-    return null;
-  };
-
-  const formatDuration = (val) => {
-    if (!val || val === '-') return '-';
-    // If it's an ISO string from Google Sheets duration/date
-    if (typeof val === 'string' && (val.includes('T') || val.includes('Z'))) {
-      try {
-        const date = new Date(val);
-        if (isNaN(date.getTime())) return val;
-
-        // Check if it's the 1899 date prefix for durations
-        const year = date.getUTCFullYear();
-        if (year === 1899 || year === 1900) {
-          const hh = String(date.getUTCHours()).padStart(2, '0');
-          const mm = String(date.getUTCMinutes()).padStart(2, '0');
-          const ss = String(date.getUTCSeconds()).padStart(2, '0');
-          return `${hh}:${mm}:${ss}`;
-        }
-        return val;
-      } catch (e) {
-        return val;
-      }
-    }
-    return val;
-  };
+  }, [rawDataOriginal, startDate, endDate, selectedCompany]);
 
   const formatDate = (dateValue) => {
     if (!dateValue) return '-';
     try {
-      // If it's already in YYYY-MM-DD format, return it
-      if (/^\d{4}-\d{2}-\d{2}/.test(dateValue)) return dateValue.substring(0, 10);
-
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) return dateValue; // Return as is if parsing fails
-
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
+      const yyyy = dateValue.getFullYear();
+      const mm = String(dateValue.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateValue.getDate()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy}`;
     } catch (e) {
-      return dateValue;
+      return '-';
     }
   };
 
-  return (
-    <div className="p-8 space-y-8 bg-gray-50/50 min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 max-w-[1600px] mx-auto">
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">List of People</h1>
-          <p className="text-gray-500 mt-1">Operational performance metrics and tracking.</p>
+  const getAvatar = (name) => {
+    if (!name) return "👤";
+    const lowerName = name.toLowerCase().trim();
+    const femaleEndings = ['a', 'i', 'ee', 'kumari', 'devi', 'shree', 'shakti'];
+    const femaleNames = ['priya', 'neha', 'pooja', 'sneha', 'anita', 'sunita', 'kavita', 'swati'];
+    const isFemale = femaleEndings.some(ending => lowerName.endsWith(ending)) || femaleNames.some(f => lowerName.includes(f));
+    return isFemale ? "👩" : "👨";
+  };
+
+  const ProgressBar = ({ value, color, label }) => {
+    const safeValue = Math.min(Math.max(0, value), 100);
+    return (
+      <div className="flex items-center space-x-3 w-32">
+        <div className="w-24 bg-gray-100/80 rounded-full h-2 min-w-[5rem] overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-1000 ease-out ${color}`}
+            style={{ width: `${safeValue}%` }}
+          ></div>
         </div>
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          <div className="relative max-w-md w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={20} />
-            <input
-              type="text"
-              placeholder="Search by name, date or metrics..."
-              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all shadow-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <span className="text-xs font-black text-gray-500 tabular-nums min-w-[30px]">{label || `${safeValue}%`}</span>
+      </div>
+    );
+  };
 
-          <select
-            className="px-4 py-3 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all shadow-sm text-sm font-medium text-gray-700 min-w-[180px]"
-            value={selectedCompany}
-            onChange={(e) => setSelectedCompany(e.target.value)}
-          >
-            <option value="">Filter By Company</option>
-            {companies.map(company => (
-              <option key={company} value={company}>{company}</option>
-            ))}
-          </select>
+  const PerformanceBadge = ({ percentage }) => {
+    const isHigh = percentage >= 95;
+    return (
+      <span className={`px-2.5 py-1 text-[10px] font-black uppercase rounded-full shadow-sm ${isHigh ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'
+        } border`}>
+        {isHigh ? '>95% Perf' : '<95% Perf'}
+      </span>
+    );
+  };
 
-          <select
-            className="px-4 py-3 bg-white border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all shadow-sm text-sm font-medium text-gray-700 min-w-[180px]"
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
+  const filteredRows = reportData.filter(row =>
+    row.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const summary = filteredRows.reduce((acc, curr) => {
+    acc.totalTarget += curr.target;
+    acc.totalDone += curr.totalWorkDone;
+    acc.totalPending += curr.pending;
+    acc.totalWeekPending += curr.weekPending;
+    return acc;
+  }, { totalTarget: 0, totalDone: 0, totalPending: 0, totalWeekPending: 0 });
+
+  const avgEfficiency = summary.totalTarget > 0
+    ? Math.round((summary.totalDone / summary.totalTarget) * 100)
+    : 0;
+
+  const handleExportCSV = () => {
+    if (filteredRows.length === 0) return;
+    // CSV headers
+    const headers = ["Employee Name", "Date Start", "Date End", "Target", "Work Done", "Pending", "Performance %"];
+    
+    // Prepare content
+    const csvRows = filteredRows.map(row => [
+      `"${row.name}"`,
+      `"${formatDate(row.minDate)}"`,
+      `"${formatDate(row.maxDate)}"`,
+      row.target,
+      row.totalWorkDone,
+      row.pending,
+      `"${row.actualWorkDonePct}%"`
+    ].join(","));
+
+    const csvContent = [headers.join(","), ...csvRows].join("\n");
+
+    // Download logic
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `MIS_Report_${getTodayStr()}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const SummaryCard = ({ title, value, icon: Icon, color, subtext }) => (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-start justify-between group hover:shadow-md transition-all duration-300">
+      <div>
+        <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">{title}</p>
+        <h3 className="text-2xl font-black text-gray-900">{value}</h3>
+        {subtext && <p className="text-[10px] font-bold text-gray-500 mt-1 uppercase tracking-tight">{subtext}</p>}
+      </div>
+      <div className={`p-3 rounded-xl ${color} shadow-sm group-hover:scale-110 transition-transform`}>
+        <Icon size={20} className="text-white" />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 page-content p-6 flex-1 bg-gray-50/30">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">MIS Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1 font-medium">Real-time team performance metrics based on assigned tasks.</p>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleClearFilters}
+            className="flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-600 px-5 py-2.5 rounded-xl font-bold text-sm border border-gray-200 transition-all active:scale-95"
           >
-            <option value="">Filter by Task Status</option>
-            <option value="not_done">Not data</option>
-            <option value="done">Done Task</option>
-          </select>
+            <Filter size={18} />
+            <span>Clear Filters</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={filteredRows.length === 0}
+            className="flex items-center space-x-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-slate-200 transition-all hover:scale-105 active:scale-95"
+          >
+            <Download size={18} />
+            <span>Export CSV</span>
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-32 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard
+          title="Total Target"
+          value={summary.totalTarget}
+          icon={Target}
+          color="bg-blue-600"
+          subtext="Total tasks assigned"
+        />
+        <SummaryCard
+          title="Work Done"
+          value={summary.totalDone}
+          icon={CheckCircle2}
+          color="bg-green-600"
+          subtext="Tasks completed successfully"
+        />
+        <SummaryCard
+          title="Pending Tasks"
+          value={summary.totalPending}
+          icon={AlertCircle}
+          color="bg-orange-600"
+          subtext={`Includes ${summary.totalWeekPending} tasks from this week`}
+        />
+        <SummaryCard
+          title="Avg. Efficiency"
+          value={`${avgEfficiency}%`}
+          icon={TrendingUp}
+          color="bg-indigo-600"
+          subtext="Overall performance index"
+        />
+      </div>
+
+      <div className="bg-white p-5 rounded-2xl shadow-lg border border-gray-100 flex flex-col md:flex-row gap-4 items-end flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-full relative max-w-[160px]">
+            <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Start Date</label>
+            <input
+              type="date"
+              className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner text-gray-800 font-medium text-sm"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+          <div className="text-gray-400 font-black mt-6">-</div>
+          <div className="w-full relative max-w-[160px]">
+            <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">End Date</label>
+            <input
+              type="date"
+              className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner text-gray-800 font-medium text-sm"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="w-full relative max-w-[200px]">
+          <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Filter Company</label>
           <div className="relative">
-            <Loader2 className="animate-spin text-blue-600" size={56} />
-            <div className="absolute inset-0 blur-xl bg-blue-400/20 rounded-full animate-pulse"></div>
+            <select
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner appearance-none text-gray-800 font-medium text-sm"
+              value={selectedCompany}
+              onChange={(e) => setSelectedCompany(e.target.value)}
+            >
+              <option value="">All Companies</option>
+              {companyList.map(comp => (
+                <option key={comp} value={comp}>{comp}</option>
+              ))}
+            </select>
+            <Filter size={16} className="absolute left-3.5 top-[13px] text-gray-400" />
           </div>
-          <p className="text-lg font-medium text-gray-600 animate-pulse">Aggregating performance data...</p>
         </div>
-      ) : error ? (
-        <div className="max-w-xl mx-auto p-8 bg-red-50 border border-red-100 rounded-3xl text-center space-y-4 shadow-sm">
-          <div className="text-red-600 font-bold text-lg">{error}</div>
-          <button
-            onClick={fetchMisData}
-            className="px-6 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-semibold shadow-md"
-          >
-            Try Again
-          </button>
+
+        <div className="w-full relative max-w-[250px] ml-auto">
+          <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Search Employees</label>
+          <input
+            type="text"
+            placeholder="Employee name..."
+            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-inner hover:shadow hover:bg-white text-gray-800 font-medium text-sm"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Search size={16} className="absolute left-3.5 top-[13px] text-gray-400" />
         </div>
-      ) : (
-        <div className="bg-white rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden max-w-[1600px] mx-auto">
-          <div className="overflow-auto max-h-[700px] min-h-[500px]">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-8 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 left-0 z-30 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">NAME</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20">DATE START</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20">DATE END</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20">TARGET</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20">ACTUAL WORK DONE</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20">% WORK NOT DONE</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20 text-center">TOTAL WORK DONE</th>
-                  <th className="px-6 py-5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em] bg-sky-200 sticky top-0 z-20">WEEK PENDING</th>
+      </div>
+
+      <div className="bg-white rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden relative">
+        <div className="overflow-x-auto max-h-[70vh]">
+          <table className="min-w-full divide-y divide-gray-200 w-full mb-10">
+            <thead className="bg-[#f8fafc] sticky top-0 z-30 shadow-sm border-b">
+              <tr>
+                <th className="px-6 py-5 text-left text-[11px] font-black text-gray-500 uppercase tracking-widest sticky left-0 z-40 bg-[#f8fafc]">NAME</th>
+                <th className="px-6 py-5 text-left text-[11px] font-black text-gray-500 uppercase tracking-widest">DATE START</th>
+                <th className="px-6 py-5 text-left text-[11px] font-black text-gray-500 uppercase tracking-widest">DATE END</th>
+                <th className="px-6 py-5 text-center text-[11px] font-black text-gray-500 uppercase tracking-widest">TARGET</th>
+                <th className="px-6 py-5 text-left text-[11px] font-black text-gray-500 uppercase tracking-widest">ACTUAL WORK DONE</th>
+                <th className="px-6 py-5 text-left text-[11px] font-black text-gray-500 uppercase tracking-widest">% WORK NOT DONE</th>
+                <th className="px-6 py-5 text-center text-[11px] font-black text-gray-500 uppercase tracking-widest">TOTAL DONE</th>
+                <th className="px-6 py-5 text-center text-[11px] font-black text-gray-500 uppercase tracking-widest">PENDING</th>
+                <th className="px-6 py-5 text-center text-[11px] font-black text-gray-500 uppercase tracking-widest">STATUS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {loading ? (
+                <tr>
+                  <td colSpan="9" className="px-6 py-28 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-4">
+                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-blue-600 font-bold tracking-widest text-sm uppercase animate-pulse">Aggregating Statistics...</span>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
-                {filteredRows.map((row, i) => {
-                  const name = row[2] || 'N/A';
-                  const dateStart = row[0] || '-';
-                  const dateEnd = row[1] || '-';
-                  const target = row[3] || 0;
-                  const actual = row[4] || 0;
-
-                  // Calculations based on images/logic
-                  // For actual work done progress, if target > 0
-                  const actualPct = target > 0 ? (actual / target) * 100 : 0;
-
-                  // % Work Not Done is the remaining percentage
-                  const workNotDonePct = target > 0 ? Math.max(0, 100 - actualPct) : 0;
-
-                  return (
-                    <tr
-                      key={i}
-                      className="group hover:bg-blue-50/50 transition-all cursor-pointer"
-                      onClick={() => handleRowClick(row)}
-                    >
-                      <td className="px-8 py-5 whitespace-nowrap sticky left-0 bg-white group-hover:bg-blue-50/30 z-10 transition-colors">
-                        <div className="flex items-center space-x-4">
-                          <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-lg border border-white shadow-sm ring-1 ring-gray-100 transition-transform group-hover:scale-110">
-                            {getAvatar(name)}
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-gray-900">{name}</div>
-                            <div className="text-[11px] font-medium text-gray-400">{row[10] || 'Team Member'}</div>
-                          </div>
+              ) : error ? (
+                <tr>
+                  <td colSpan="9" className="px-6 py-16 text-center text-red-500 font-bold bg-red-50">
+                    <div className="text-xl mb-2">⚠️</div>
+                    {error}
+                  </td>
+                </tr>
+              ) : filteredRows.length > 0 ? (
+                filteredRows.map((row, i) => (
+                  <tr 
+                    key={i} 
+                    onClick={() => handleRowClick(row.name)}
+                    className="group hover:bg-blue-50/60 transition-all cursor-pointer active:scale-[0.99] origin-center"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap sticky left-0 z-10 bg-white group-hover:bg-[#f3f8ff] border-r border-gray-100 transition-colors">
+                      <div className="flex items-center space-x-4">
+                        <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-slate-100 to-slate-200 flex items-center justify-center text-xl shadow-sm border border-white shrink-0 group-hover:scale-105 transition-transform">
+                          {getAvatar(row.name)}
                         </div>
-                      </td>
-                      <td className="px-6 py-5 whitespace-nowrap text-sm text-gray-500 tabular-nums">{formatDate(dateStart)}</td>
-                      <td className="px-6 py-5 whitespace-nowrap text-sm text-gray-500 tabular-nums">{formatDate(dateEnd)}</td>
-                      <td className="px-6 py-5 whitespace-nowrap text-sm font-bold text-gray-700">{target}</td>
-                      <td className="px-6 py-5 whitespace-nowrap">
-                        <ProgressBar value={actualPct} color="bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]" />
-                      </td>
-                      <td className="px-6 py-5 whitespace-nowrap">
-                        <ProgressBar value={workNotDonePct} color="bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]" />
-                      </td>
-                      <td className="px-6 py-5 whitespace-nowrap text-center">
-                        <Badge value={row[7]} />
-                      </td>
-                      <td className="px-6 py-5 whitespace-nowrap text-sm text-gray-500 font-medium">{row[8] || ''}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {filteredRows.length === 0 && (
-            <div className="text-center py-32 space-y-4">
-              <div className="text-5xl">🔍</div>
-              <p className="text-xl font-bold text-gray-900">No records matching "{searchTerm}"</p>
-              <p className="text-gray-400">Try adjusting your filters or search keywords.</p>
-            </div>
-          )}
+                        <div className="text-sm font-extrabold text-gray-900 group-hover:text-blue-700 transition-colors">{row.name}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-bold tabular-nums">{formatDate(row.minDate)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-bold tabular-nums">{formatDate(row.maxDate)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-base font-black text-slate-800">{row.target}</td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <ProgressBar value={row.actualWorkDonePct} color="bg-blue-500" />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <ProgressBar value={row.workNotDonePct} color="bg-red-500" />
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className="px-4 py-1.5 text-xs font-black text-blue-700 bg-blue-50 border border-blue-100 rounded-lg shadow-inner">
+                        {row.totalWorkDone}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className={`px-4 py-1.5 text-xs font-black rounded-lg border shadow-inner ${row.pending > 0 ? 'text-orange-700 bg-orange-50 border-orange-100' : 'text-gray-400 bg-gray-50 border-gray-100'}`}>
+                        {row.pending}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <PerformanceBadge percentage={row.actualWorkDonePct} />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="9" className="px-6 py-24 text-center">
+                    <div className="text-4xl text-gray-300 mb-4 opacity-50">📋</div>
+                    <p className="font-bold text-gray-400 uppercase tracking-widest text-sm">No performance records found.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
       {/* Task Details Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm transition-opacity"
-            onClick={() => setShowModal(false)}
-          />
-
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in duration-300">
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col scale-in animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <div className="flex items-center space-x-4">
-                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-xl shadow-lg shadow-blue-200 border-2 border-white">
-                  {selectedEmployee && getAvatar(selectedEmployee[2])}
+            <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <div className="flex items-center space-x-5">
+                <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-2xl shadow-lg border-2 border-white">
+                  {getAvatar(selectedEmployeeName)}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">
-                    {selectedEmployee ? selectedEmployee[2] : 'Employee Name'}
-                  </h2>
-                  <p className="text-xs font-semibold text-gray-500 flex items-center space-x-2 mt-0.5">
-                    <span className="inline-block w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                    <span>{selectedEmployee ? selectedEmployee[10] : 'Department'}</span>
-                  </p>
+                  <h2 className="text-2xl font-black text-gray-900 tracking-tight leading-none">{selectedEmployeeName}</h2>
+                  <div className="flex items-center mt-2 space-x-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">{selectedEmployeeCompany}</span>
+                  </div>
                 </div>
               </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-2 bg-white hover:bg-gray-100 text-gray-400 hover:text-gray-900 rounded-xl transition-all border border-gray-100 shadow-sm"
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600 border border-transparent hover:border-gray-200 shadow-sm transition-all active:scale-90"
               >
-                <X size={20} strokeWidth={2.5} />
+                <AlertCircle className="rotate-45" size={24} />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div className="p-6">
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-gray-800 tracking-tight">Task Details</h3>
-                {!detailsLoading && detailsData.length > 0 && (
-                  <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    {detailsData.length} Records Found
-                  </div>
-                )}
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-gray-50/30">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-sm font-black text-gray-500 uppercase tracking-[0.2em]">Task Details</h4>
+                <div className="bg-blue-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md">
+                   {selectedEmployeeTasks.length} Records Found
+                </div>
               </div>
 
-              {detailsLoading ? (
-                <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                  <Loader2 className="animate-spin text-blue-600" size={32} />
-                  <p className="text-sm text-gray-500 font-medium">Fetching detailed task list...</p>
-                </div>
-              ) : detailsError ? (
-                <div className="p-6 bg-red-50 border border-red-100 rounded-2xl text-center">
-                  <p className="text-red-600 font-bold">{detailsError}</p>
-                </div>
-              ) : detailsData.length === 0 ? (
-                <div className="text-center py-20 space-y-4 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                  <div className="text-4xl text-gray-300">📋</div>
-                  <p className="text-gray-500 font-bold">No detailed task records found for this employee.</p>
-                </div>
-              ) : (
-                <div className="overflow-auto max-h-[60vh] rounded-xl border border-gray-100 shadow-sm relative">
-                  <table className="w-full border-collapse">
-                    <thead className="sticky top-0 z-30">
-                      <tr className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100 italic">
-                        <th className="px-4 py-3 text-left sticky top-0 bg-gray-50 z-20">Task ID</th>
-                        <th className="px-4 py-3 text-left sticky top-0 bg-gray-50 z-20">Name</th>
-                        <th className="px-4 py-3 text-left sticky top-0 bg-gray-50 z-20">Freq</th>
-                        <th className="px-4 py-3 text-left sticky top-0 bg-gray-50 z-20">Task</th>
-                        <th className="px-4 py-3 text-left text-center sticky top-0 bg-gray-50 z-20">Planned</th>
-                        <th className="px-4 py-3 text-left text-center sticky top-0 bg-gray-50 z-20">Actual</th>
-                        <th className="px-4 py-3 text-left sticky top-0 bg-gray-50 z-20">Time Delay</th>
-                        <th className="px-4 py-3 text-left sticky top-0 bg-gray-50 z-20">Shop</th>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-100">
+                    <thead className="bg-gray-50/50 italic">
+                      <tr>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">TASK ID</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">NAME</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">FREQ</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">TASK</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">PLANNED</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">ACTUAL</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">TIME DELAY</th>
+                        <th className="px-5 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">SHOP</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {detailsData.map((detail, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-4 py-3 text-xs font-bold text-gray-900">{detail[1] || '-'}</td>
-                          <td className="px-4 py-3 text-xs text-gray-600 font-medium">{detail[0] || '-'}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500 uppercase tracking-tighter font-semibold">
-                            <span className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">{detail[2] || '-'}</span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-700 font-medium max-w-[12rem] truncate">{detail[3] || '-'}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500 tabular-nums text-center whitespace-nowrap">{formatDate(detail[4])}</td>
-                          <td className="px-4 py-3 text-xs text-gray-500 tabular-nums text-center whitespace-nowrap">{formatDate(detail[5])}</td>
-                          <td className="px-4 py-3 text-xs">
-                            <span className={`font-bold ${detail[6] && detail[6] !== '-' ? 'text-red-500' : 'text-green-500'}`}>
-                              {formatDuration(detail[6])}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-600 font-bold max-w-[10rem] truncate">{detail[7] || '-'}</td>
+                      {selectedEmployeeTasks.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="px-6 py-12 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">No records found for the given criteria.</td>
                         </tr>
-                      ))}
+                      ) : (
+                        selectedEmployeeTasks.map((task, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-5 py-4 whitespace-nowrap text-xs font-black text-slate-800">{task[1]}</td>
+                            <td className="px-5 py-4 whitespace-nowrap text-[11px] font-bold text-gray-500 uppercase">{task[4]}</td>
+                            <td className="px-5 py-4 whitespace-nowrap">
+                              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded border border-gray-200">
+                                {task[7] || 'Daily'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-xs font-bold text-gray-700 min-w-[200px] leading-relaxed">
+                              <span className="text-blue-600/60 mr-1">{task[5]?.split(' ')[0]}</span>
+                              {task[5]?.split(' ').slice(1).join(' ')}
+                            </td>
+                            <td className="px-5 py-4 whitespace-nowrap text-xs font-bold text-gray-400">{formatDate(parseDate(task[6]))}</td>
+                            <td className="px-5 py-4 whitespace-nowrap text-xs font-bold text-gray-400">{task[10] ? formatDate(parseDate(task[10])) : '-'}</td>
+                            <td className={`px-5 py-4 whitespace-nowrap text-xs font-black ${task[11] ? 'text-red-500' : 'text-green-500'}`}>
+                              {task[11] || '-'}
+                            </td>
+                            <td className="px-5 py-4 whitespace-nowrap text-[11px] font-black text-gray-800 uppercase tracking-wider">{task[2] || '-'}</td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="px-6 py-4 bg-gray-50/50 border-t border-gray-100 flex justify-end">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-6 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-all shadow-md active:scale-95"
+            <div className="px-8 py-4 border-t border-gray-100 bg-white flex justify-end">
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-2.5 rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-md active:scale-95"
               >
                 Close
               </button>
