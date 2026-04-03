@@ -3,10 +3,10 @@ import { Search, Download, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const DEVICES = [
-  { name: 'BAVDHAN', serial: 'C26238441B1E342D' },
-  { name: 'HINJEWADI', serial: 'AMDB25061400335' },
-  { name: 'WAGHOLI', serial: 'AMDB25061400343' },
-  { name: 'AKOLE', serial: 'C262CC13CF202038' }
+  { name: 'BAWDHAN', apiName: 'BAVDHAN', serial: 'C26238441B1E342D' },
+  { name: 'HINJEWADI', apiName: 'HINJEWADI', serial: 'AMDB25061400335' },
+  { name: 'WAGHOLI', apiName: 'WAGHOLI', serial: 'AMDB25061400343' },
+  { name: 'AKOLE', apiName: 'AKOLE', serial: 'C262CC13CF202038' }
 ];
 
 const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
@@ -123,12 +123,21 @@ const Attendance = () => {
     return `${displayH.toString().padStart(2, '0')}:${m}:${s} ${ampm}`;
   };
 
+  const getSundaysCount = (month, year) => {
+    let count = 0;
+    const days = new Date(year, month, 0).getDate();
+    for (let i = 1; i <= days; i++) {
+      if (new Date(year, month - 1, i).getDay() === 0) count++;
+    }
+    return count;
+  };
+
   const fetchAttendanceData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Fetch Metadata (Joining & Leave)
+      // 1. Fetch Metadata (Joining & Master Mapping)
       let currentJoining = joiningData;
       if (joiningData.length === 0) {
         const jRes = await fetch(JOINING_API_URL);
@@ -148,7 +157,6 @@ const Attendance = () => {
         }
       }
 
-      // 1b. Fetch Device User Mapping from MASTER sheet (HR FMS V.1)
       const MASTER_MAP_URL = `https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=MASTER&action=fetch`;
       const dmRes = await fetch(MASTER_MAP_URL);
       const dmData = await dmRes.json();
@@ -165,22 +173,30 @@ const Attendance = () => {
         setDeviceMapping(currentMapping);
       }
 
-      // 2. Determine Date Range
       const startDay = '01';
       const endDay = getDaysInMonth(selectedMonth, selectedYear);
       const paddedMonth = selectedMonth.toString().padStart(2, '0');
-      const fromDate = `${selectedYear}-${paddedMonth}-${startDay}`;
-      const toDate = `${selectedYear}-${paddedMonth}-${endDay}`;
+      let fromDate = `${selectedYear}-${paddedMonth}-${startDay}`;
+      let toDate = `${selectedYear}-${paddedMonth}-${endDay}`;
 
-      // 3. Fetch Device Logs
-      const API_URL = `/api/device-logs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.name}&FromDate=${fromDate}&ToDate=${toDate}`;
+      if (selectedYear < 2026 || (selectedYear === 2026 && selectedMonth < 4)) {
+         setAttendanceData([]);
+         return;
+      }
+
+      const API_URL = `/api/device-logs?APIKey=211616032630&SerialNumber=${selectedDevice.serial}&DeviceName=${selectedDevice.apiName}&FromDate=${fromDate}&ToDate=${toDate}`;
       const response = await fetch(API_URL);
       if (!response.ok) throw new Error(`Status: ${response.status}`);
-      const logs = await response.json();
-      if (!Array.isArray(logs)) throw new Error('Invalid logs data');
+      const rawLogs = await response.json();
+      if (!Array.isArray(rawLogs)) throw new Error('Invalid logs data');
 
-      // 4. Daily Aggregation Logic
-      const dailyGrouped = {}; // { emp_date: { logs: [] } }
+      const logs = rawLogs.filter(log => {
+        if (!log.LogDate) return false;
+        const logDateStr = log.LogDate.split(' ')[0];
+        return logDateStr >= '2026-04-01';
+      });
+
+      const dailyGrouped = {};
       logs.sort((a,b) => new Date(a.LogDate) - new Date(b.LogDate));
       
       logs.forEach(log => {
@@ -191,9 +207,10 @@ const Attendance = () => {
         dailyGrouped[key].logs.push(log.LogDate);
       });
 
-      // 5. Monthly Aggregation Logic
-      const monthlyAgg = {}; // { empId: { ... } }
-      
+      const monthlyAgg = {};
+      const totalSundays = getSundaysCount(selectedMonth, selectedYear);
+      const totalDaysInMonth = getDaysInMonth(selectedMonth, selectedYear);
+
       Object.values(dailyGrouped).forEach(day => {
         const id = day.id.toString().trim();
         if (!monthlyAgg[id]) {
@@ -205,9 +222,8 @@ const Attendance = () => {
             totalWorkSecs: 0,
             totalLunchSecs: 0,
             holidayDays: 0,
-            // Carry forward mapping info
             userId: id,
-            serialNo: day.logs[0] ? selectedDevice.serial : '-' 
+            actualSerial: day.logs[0] ? selectedDevice.serial : '-' 
           };
         }
         
@@ -217,19 +233,12 @@ const Attendance = () => {
         const inTime = day.logs[0];
         const outTime = day.logs[day.logs.length - 1];
         
-        // Late calculation
         if (calculateLateMinutes(inTime) > 0) agg.lateDays += 1;
-        
-        // Punch miss
         if (day.logs.length === 1) agg.punchMissDays += 1;
         else {
-          // Work duration
           const start = new Date(inTime.replace(/-/g, '/'));
           const end = new Date(outTime.replace(/-/g, '/'));
           agg.totalWorkSecs += (end - start) / 1000;
-          
-          // Lunch duration (if logs.length > 2, assume logs[1] to logs[out-1] is break or something)
-          // Simple heuristic: if 4 logs, [1] to [2] is lunch
           if (day.logs.length >= 4) {
             const lStart = new Date(day.logs[1].replace(/-/g, '/'));
             const lEnd = new Date(day.logs[2].replace(/-/g, '/'));
@@ -238,27 +247,30 @@ const Attendance = () => {
         }
       });
 
-      // 6. Final Mapping
-      const finalData = Object.values(monthlyAgg).map(agg => {
+      const finalData = Object.values(monthlyAgg).map((agg, idx) => {
         const code = agg.id.toString().trim();
-        const serial = selectedDevice.serial;
-        const isNumeric = !isNaN(code) && code !== '';
-
-        // Prioritize Device Mapping
-        const dMap = currentMapping.find(m => m.userId === code && m.serialNo === serial);
-
-        // Match by ID or Name (Same as Daily Logs) fallback
         const empMeta = currentJoining.find(e => 
-          (e.id && e.id.toLowerCase() === code.toLowerCase()) || 
-          (e.name && e.name.toLowerCase() === code.toLowerCase())
+            (e.id && e.id.toLowerCase() === code.toLowerCase()) || 
+            (e.name && e.name.toLowerCase() === code.toLowerCase())
         );
 
-        const displayName = dMap ? dMap.name : (empMeta ? empMeta.name : (isNumeric ? 'Unknown' : code));
-        const displayCode = dMap ? dMap.userId : (empMeta ? empMeta.id : (isNumeric ? code : 'Unknown'));
-        const displayStore = dMap ? dMap.storeName : selectedDevice.name;
+        let dMap = currentMapping.find(m => m.userId && m.userId.toString().toLowerCase() === code.toLowerCase());
+        
+        if (!dMap) {
+          const entryName = (empMeta?.name || code).toString().trim().toLowerCase();
+          dMap = currentMapping.find(m => m.name && m.name.toString().toLowerCase() === entryName);
+        }
+
+        const displayName = dMap ? dMap.name : (empMeta ? empMeta.name : (isNaN(code) ? code : 'Unknown'));
+        const displayCode = dMap ? dMap.userId : (empMeta ? empMeta.id : (isNaN(code) ? 'Unknown' : code));
+        const displayStore = dMap ? dMap.storeName : (empMeta ? empMeta.store : selectedDevice.name);
         const displayDeviceId = dMap ? dMap.deviceId : '-';
+        const displayAssignedSerial = dMap ? dMap.serialNo : agg.actualSerial;
+
+        const absentDays = Math.max(0, totalDaysInMonth - agg.presentDays);
 
         return {
+          sNo: idx + 1,
           year: selectedYear,
           month: monthNames[selectedMonth - 1],
           employeeCode: displayCode,
@@ -266,12 +278,14 @@ const Attendance = () => {
           designation: empMeta ? empMeta.designation : '-',
           storeName: displayStore,
           deviceId: displayDeviceId,
+          serialNo: displayAssignedSerial,
           presentDays: agg.presentDays,
+          absentDays: absentDays,
           punchMiss: agg.punchMissDays,
           lateDays: agg.lateDays,
           totalWorkHours: formatSecsToHrsMins(agg.totalWorkSecs),
           totalLunchTime: formatSecsToHrsMins(agg.totalLunchSecs),
-          holidays: 0
+          holidays: totalSundays
         };
       });
 
@@ -279,7 +293,7 @@ const Attendance = () => {
     } catch (err) {
       console.error(err);
       setError(err.message);
-      setAttendanceData([]); // Clear on error
+      setAttendanceData([]);
     } finally {
       setLoading(false);
     }
@@ -307,19 +321,21 @@ const Attendance = () => {
 
   const downloadExcel = () => {
     const dataToExport = filteredData.map(item => ({
-      'Year': item.year,
-      'Month': item.month,
+      'S.No.': item.sNo,
+      'Month/Year': `${item.month} ${item.year}`,
       'Employee Code': item.employeeCode,
       'Employee Name': item.employeeName,
       'Designation': item.designation,
       'Store Name': item.storeName,
       'Device ID': item.deviceId,
-      'Days Present': item.presentDays,
+      'Serial NO': item.serialNo,
+      'Present': item.presentDays,
+      'Absent': item.absentDays,
       'Punch Miss': item.punchMiss,
+      'Holidays': item.holidays,
       'Late Days': item.lateDays,
       'Total Working Hour': item.totalWorkHours,
-      'Total Lunch Time': item.totalLunchTime,
-      'Holidays': item.holidays
+      'Total Lunch Time': item.totalLunchTime
     }));
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -399,25 +415,27 @@ const Attendance = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0 z-10 transition-colors">
               <tr>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Year</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">S.No.</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Month/Yr</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Employee Code</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Employee Name</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap">Designation</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Store Name</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Device ID</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Month</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Days Present</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center text-red-500">Punch Miss</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center text-indigo-500">Holidays</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center text-orange-500">Late Days</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center">Total Duration</th>
-                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] whitespace-nowrap text-center text-blue-600">Total Lunch</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Designation</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Store Name</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Device ID</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Serial NO</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Present</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-rose-500 uppercase tracking-[0.2em] text-center">Absent</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center text-red-500">Punch Miss</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center text-indigo-500">Holidays</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center text-orange-500">Late Days</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Duration</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] text-center text-blue-600">Lunch</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="12" className="px-6 py-12 text-center">
+                  <td colSpan="15" className="px-6 py-12 text-center">
                     <div className="flex justify-center flex-col items-center">
                       <div className="w-8 h-8 border-4 border-indigo-500 border-dashed rounded-full animate-spin mb-3"></div>
                       <span className="text-gray-600 text-sm font-medium">Processing aggregated data...</span>
@@ -426,7 +444,7 @@ const Attendance = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="12" className="px-6 py-12 text-center">
+                  <td colSpan="15" className="px-6 py-12 text-center">
                     <p className="text-red-500 font-medium mb-3">Error: {error}</p>
                     <button
                       onClick={fetchAttendanceData}
@@ -438,27 +456,33 @@ const Attendance = () => {
                 </tr>
               ) : filteredData.length > 0 ? (
                 filteredData.map((item, index) => (
-                  <tr key={index} className="group hover:bg-gray-50/80 transition-all border-l-2 border-transparent hover:border-indigo-500">
-                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{item.year}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-600">{item.employeeCode}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors uppercase">{item.employeeName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-medium text-gray-500">{item.designation}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-700 text-center">{item.storeName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-black text-indigo-600 text-center">{item.deviceId}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-slate-800 text-center">{item.month}</td>
+                  <tr key={index} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-bold text-gray-400">{item.sNo}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-gray-500">{item.month} {item.year}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-700">{item.employeeCode}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-black text-indigo-600">{item.employeeName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-medium text-gray-500">{item.designation}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-gray-600">{item.storeName}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-indigo-500">{item.deviceId}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-gray-500">{item.serialNo}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className="px-3 py-1 bg-green-50 text-green-700 text-[10px] font-black rounded-full border border-green-100 shadow-sm">{item.presentDays} Days</span>
+                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-black border border-green-100">{item.presentDays} Days</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-red-500 text-center">{item.punchMiss}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-indigo-600 text-center">{item.holidays}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-orange-500 text-center">{item.lateDays}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-gray-800 text-center">{item.totalWorkHours}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-blue-600 text-center">{item.totalLunchTime}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className="px-2 py-1 bg-rose-50 text-rose-700 rounded text-[10px] font-black border border-rose-100">{item.absentDays} Days</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className="text-red-600 text-[10px] font-bold underline decoration-dotted">{item.punchMiss}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-indigo-600">{item.holidays}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-[10px] font-bold text-orange-600">{item.lateDays}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-black text-slate-700">{item.totalWorkHours}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-xs font-bold text-blue-600">{item.totalLunchTime}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="12" className="px-6 py-12 text-center">
+                  <td colSpan="15" className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center text-gray-500">
                       <Search size={32} className="mb-2 text-gray-300" />
                       <p className="font-medium text-lg text-gray-600">No records found</p>
