@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"JOINING_SCRIPT_URL\\\\|PAYROLL_SCRIPT_URL\" /c/Users/pryoucan/Documents/org-pr-temp/HR-Product/src/pages/*.jsx)",
+      "Bash(npx vite:*)",
+      "Bash(curl -sL \"https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=MASTER&action=fetch\")",
+      "Bash(curl -sL \"https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); rows=d['data']; print\\('Total rows:', len\\(rows\\)\\); [print\\(f'Row {i}:', rows[i]\\) for i in range\\(min\\(8,len\\(rows\\)\\)\\)]\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);const rows=r.data;console.log\\('Total rows:',rows.length\\);rows.slice\\(0,8\\).forEach\\(\\(row,i\\)=>console.log\\('Row',i,JSON.stringify\\(row\\)\\)\\);}\\);\")",
+      "Bash(curl -sL \"https://script.google.com/macros/s/AKfycby1QHKttecIhZwoyh8-xo_wzqHgxIuFr9Tci8L803T1q0nKkjA1w26soUXSffkMY4E0sQ/exec?sheet=Master&action=fetch&spreadsheetId=1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\);if\\(!r.success\\){console.log\\('Error:',r.error||r\\);return;}const rows=r.data;console.log\\('Total rows:',rows.length\\);rows.slice\\(0,6\\).forEach\\(\\(row,i\\)=>console.log\\('Row',i,JSON.stringify\\(row\\)\\)\\);}\\);\")"
+    ]
+  }
+}
