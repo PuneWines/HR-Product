@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  DollarSign, Download, Eye, Calendar, TrendingUp, 
-  ArrowUpRight, ArrowDownRight, CreditCard, Receipt, 
+import {
+  DollarSign, Download, Eye, Calendar, TrendingUp,
+  ArrowUpRight, ArrowDownRight, CreditCard, Receipt,
   X, Printer, CheckCircle2, AlertCircle, Info, PlusCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -19,23 +19,23 @@ const PayslipModal = ({ isOpen, onClose, record }) => {
         {/* Modal Header */}
         <div className="px-8 py-6 bg-indigo-600 text-white flex items-center justify-between print:bg-white print:text-black print:border-b print:px-4">
           <div className="flex items-center gap-3">
-             <div className="p-2 bg-white/20 rounded-lg print:hidden">
-                <Receipt size={24} />
-             </div>
-             <div>
-                <h2 className="text-xl font-bold tracking-tight">Salary Payslip</h2>
-                <p className="text-indigo-100 text-sm print:text-gray-500">{record.month} {record.year}</p>
-             </div>
+            <div className="p-2 bg-white/20 rounded-lg print:hidden">
+              <Receipt size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-tight">Salary Payslip</h2>
+              <p className="text-indigo-100 text-sm print:text-gray-500">{record.month} {record.year}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2 print:hidden">
-            <button 
+            <button
               onClick={handlePrint}
               className="p-2 hover:bg-white/10 rounded-full transition-colors"
               title="Print Payslip"
             >
               <Printer size={20} />
             </button>
-            <button 
+            <button
               onClick={onClose}
               className="p-2 hover:bg-white/10 rounded-full transition-colors"
             >
@@ -55,9 +55,8 @@ const PayslipModal = ({ isOpen, onClose, record }) => {
             </div>
             <div className="text-right">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Payment Status</p>
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
-                record.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-              }`}>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${record.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                }`}>
                 {record.status === 'Paid' ? <CheckCircle2 size={12} className="mr-1" /> : <AlertCircle size={12} className="mr-1" />}
                 {record.status}
               </span>
@@ -151,12 +150,12 @@ const MySalary = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
 
-  const filteredSalary = salaryData.filter(record => 
+  const filteredSalary = salaryData.filter(record =>
     record.year.toString() === selectedYear.toString() &&
     record.month.toLowerCase() === selectedMonth.toLowerCase()
   );
 
-  const fetchSalaryData = async () => { 
+  const fetchSalaryData = async () => {
     setLoading(true);
     setTableLoading(true);
     setError(null);
@@ -173,15 +172,15 @@ const MySalary = () => {
       // Fetch from PAID Record sheet using specialized script
       const PAYROLL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby1QHKttecIhZwoyh8-xo_wzqHgxIuFr9Tci8L803T1q0nKkjA1w26soUXSffkMY4E0sQ/exec';
       const SPREADSHEET_ID = '1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8';
-      
+
       const response = await fetch(
         `${PAYROLL_SCRIPT_URL}?sheet=PAID Record&action=fetch&spreadsheetId=${SPREADSHEET_ID}`
       );
-      
+
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const result = await response.json();
       if (!result.success) throw new Error(result.error || 'Failed to fetch salary data');
-      
+
       const rawData = result.data || result;
       if (!Array.isArray(rawData)) throw new Error('Expected array data not received');
 
@@ -230,11 +229,11 @@ const MySalary = () => {
             status: 'Paid',
           };
         });
-        // Filtering by user in "My Salary"
-        const userSalaryData = processedData.filter(item => 
-          item.employeeName?.toString().trim().toLowerCase() === employeeName.trim().toLowerCase()
-        );
-      
+      // Filtering by user in "My Salary"
+      const userSalaryData = processedData.filter(item =>
+        item.employeeName?.toString().trim().toLowerCase() === employeeName.trim().toLowerCase()
+      );
+
       if (userSalaryData.length > 0) {
         setSalaryData(userSalaryData);
         setIsDemo(false);
@@ -266,7 +265,7 @@ const MySalary = () => {
   const StatCard = ({ title, value, icon: Icon, colorClass }) => (
     <div className={`relative overflow-hidden bg-white rounded-3xl p-6 shadow-xl border border-gray-100 group transition-all hover:-translate-y-1`}>
       <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 opacity-10 transition-transform group-hover:scale-110`}>
-         <Icon size={96} />
+        <Icon size={96} />
       </div>
       <div className="relative flex items-center gap-4">
         <div className={`p-3 rounded-2xl ${colorClass} shadow-lg`}>
@@ -297,12 +296,12 @@ const MySalary = () => {
             Track your earnings and salary history from Payroll.
           </p>
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-4">
           {/* Year Filter */}
           <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
             <span className="text-[10px] font-bold text-gray-400 uppercase px-2">Year</span>
-            <select 
+            <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
               className="bg-transparent text-sm font-bold text-gray-700 outline-none pr-4"
@@ -314,7 +313,7 @@ const MySalary = () => {
           {/* Month Filter */}
           <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
             <span className="text-[10px] font-bold text-gray-400 uppercase px-2">Month</span>
-            <select 
+            <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent text-sm font-bold text-gray-700 outline-none pr-4"
@@ -323,7 +322,7 @@ const MySalary = () => {
             </select>
           </div>
 
-          <button 
+          <button
             onClick={fetchSalaryData}
             className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95"
           >
@@ -345,8 +344,8 @@ const MySalary = () => {
         <div className="px-8 py-6 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
           <h2 className="text-xl font-bold text-gray-800">My Salary Stage</h2>
           <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
-             <Calendar size={14} className="text-indigo-500" />
-             {selectedMonth} {selectedYear}
+            <Calendar size={14} className="text-indigo-500" />
+            {selectedMonth} {selectedYear}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -373,8 +372,8 @@ const MySalary = () => {
                 <tr>
                   <td colSpan="13" className="px-8 py-20 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
-                       <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                       <p className="text-gray-500 font-medium">Loading payroll records...</p>
+                      <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-gray-500 font-medium">Loading payroll records...</p>
                     </div>
                   </td>
                 </tr>
@@ -382,11 +381,11 @@ const MySalary = () => {
                 <tr>
                   <td colSpan="13" className="px-8 py-20 text-center">
                     <div className="flex flex-col items-center gap-4">
-                       <div className="p-3 bg-red-50 text-red-500 rounded-full">
-                          <AlertCircle size={32} />
-                       </div>
-                       <p className="text-gray-600 font-medium">{error}</p>
-                       <button onClick={fetchSalaryData} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all active:scale-95">Retry Sync</button>
+                      <div className="p-3 bg-red-50 text-red-500 rounded-full">
+                        <AlertCircle size={32} />
+                      </div>
+                      <p className="text-gray-600 font-medium">{error}</p>
+                      <button onClick={fetchSalaryData} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all active:scale-95">Retry Sync</button>
                     </div>
                   </td>
                 </tr>
@@ -394,8 +393,8 @@ const MySalary = () => {
                 <tr>
                   <td colSpan="13" className="px-8 py-20 text-center">
                     <div className="flex flex-col items-center gap-2 text-gray-400">
-                       <Info size={40} className="opacity-20" />
-                       <p className="font-medium">No salary records found for {selectedMonth} {selectedYear}.</p>
+                      <Info size={40} className="opacity-20" />
+                      <p className="font-medium">No salary records found for {selectedMonth} {selectedYear}.</p>
                     </div>
                   </td>
                 </tr>
@@ -422,10 +421,10 @@ const MySalary = () => {
       </div>
 
       {/* Payslip Modal */}
-      <PayslipModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        record={selectedRecord} 
+      <PayslipModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        record={selectedRecord}
       />
     </div>
   );

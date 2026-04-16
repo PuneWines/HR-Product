@@ -6,6 +6,17 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const DEVICES = [
+  { name: 'BAWDHAN', apiName: 'BAVDHAN', serial: 'C26238441B1E342D' },
+  { name: 'HINJEWADI', apiName: 'HINJEWADI', serial: 'AMDB25061400335' },
+  { name: 'WAGHOLI', apiName: 'WAGHOLI', serial: 'AMDB25061400343' },
+  { name: 'AKOLE', apiName: 'AKOLE', serial: 'C262CC13CF202038' },
+  { name: 'MUMBAI', apiName: 'MUMBAI', serial: 'C2630450C32A2327' }
+];
+
+const JOINING_API_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=JOINING&action=fetch';
+const MASTER_MAP_URL = 'https://script.google.com/macros/s/AKfycbyGp3onARkG7QfXKSZ22J6PokX-rYEYjOd-loijl7CqfnmDev_-aukiXp1vZ7yToJKQ/exec?sheet=MASTER&action=fetch';
+
 const MyAttendance = () => {
   const DUMMY_ATTENDANCE = [
     {
@@ -31,8 +42,12 @@ const MyAttendance = () => {
     return new Date(year, month, 0).getDate();
   };
 
-  const [selectedMonth, setSelectedMonth] = useState('');
-  const [selectedYear, setSelectedYear] = useState('');
+  const today = new Date();
+  const currentMonthName = monthNames[today.getMonth()];
+  const currentYearStr = today.getFullYear().toString();
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthName);
+  const [selectedYear, setSelectedYear] = useState(currentYearStr);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [attendanceData, setAttendanceData] = useState([]);
@@ -96,26 +111,113 @@ const MyAttendance = () => {
   const durationToSecs = (val) => {
     if (!val || val === '0' || val === '-') return 0;
     const str = val.toString().trim();
-
-    // Handle Date-like strings representing durations
     if (str.includes('-') || str.includes('T')) {
       const d = new Date(str.replace(' ', 'T'));
       if (!isNaN(d.getTime())) return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
     }
-
     const parts = str.split(':');
     if (parts.length >= 2) {
       let h = parseInt(parts[0], 10);
       let m = parseInt(parts[1], 10);
       let s = parts[2] ? parseInt(parts[2], 10) : 0;
-      // If hour is suspiciously like a year, it's a date parsing fail
       if (h > 1000) h = 0;
       return h * 3600 + m * 60 + s;
     }
-
     const floatVal = parseFloat(str.replace(/:/g, '.'));
     if (!isNaN(floatVal) && floatVal < 24) return Math.floor(floatVal * 3600);
     return 0;
+  };
+
+  const formatTime12h = (dateStr) => {
+    if (!dateStr || dateStr === '-') return '-';
+    try {
+      const parts = dateStr.trim().split(' ');
+      let timePart = parts[1] || parts[0];
+      if (!timePart) return dateStr;
+      const hasAMPM = timePart.toLowerCase().includes('am') || timePart.toLowerCase().includes('pm');
+      if (hasAMPM && !dateStr.includes('-')) return timePart.toUpperCase();
+      if (!timePart.includes(':')) return dateStr;
+      let [hoursPart, minutesFull] = timePart.split(':');
+      let hours = parseInt(hoursPart);
+      let minutes = minutesFull ? minutesFull.slice(0, 2) : '00';
+      const isPM = timePart.toLowerCase().includes('pm') || hours >= 12;
+      const ampm = isPM ? 'PM' : 'AM';
+      const h12 = hours % 12 || 12;
+      return `${h12}:${minutes.padStart(2, '0')} ${ampm}`;
+    } catch (e) { return dateStr; }
+  };
+
+  const calculateHoursMins = (diffMs) => {
+    if (!diffMs || isNaN(diffMs) || diffMs <= 0) return '00:00:00';
+    const totalSecs = Math.floor(diffMs / 1000);
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const calculateWorkHours = (inStr, outStr, dateContext = '') => {
+    if (!inStr || !outStr || inStr === '-' || outStr === '-' || inStr === outStr) return '00:00:00';
+    try {
+      const parse = (s) => {
+        if (!s || s === '-') return null;
+        try {
+          if (s.includes('-') && s.includes(':')) {
+            const d = new Date(s.replace(/-/g, '/'));
+            if (!isNaN(d.getTime())) return d;
+          }
+          let cleanTime = s.trim().toUpperCase().replace(/[AP]M/g, '').trim();
+          const isPM = s.toUpperCase().includes('PM');
+          const isAM = s.toUpperCase().includes('AM');
+          const parts = cleanTime.split(':');
+          let h = parseInt(parts[0]) || 0;
+          let m = parseInt(parts[1]) || 0;
+          let sec = parseInt(parts[2]) || 0;
+          if (isPM && h < 12) h += 12;
+          if (isAM && h === 12) h = 0;
+          const baseDate = dateContext ? new Date(dateContext.replace(/-/g, '/')) : new Date();
+          baseDate.setHours(h, m, sec, 0);
+          return baseDate;
+        } catch (e) { return null; }
+      };
+      const inDate = parse(inStr);
+      const outDate = parse(outStr);
+      if (!inDate || !outDate || outDate <= inDate) return '00:00:00';
+      return calculateHoursMins(outDate - inDate);
+    } catch (e) { return '00:00:00'; }
+  };
+
+  const calculateLateMinutesLive = (inStr, dateContext = '') => {
+    if (!inStr || inStr === '-') return 0;
+    try {
+      const parse = (s) => {
+        if (!s || s === '-') return null;
+        try {
+          if (s.includes('-') && s.includes(':')) {
+            const d = new Date(s.replace(/-/g, '/'));
+            if (!isNaN(d.getTime())) return d;
+          }
+          let cleanTime = s.trim().toUpperCase().replace(/[AP]M/g, '').trim();
+          const isPM = s.toUpperCase().includes('PM');
+          const isAM = s.toUpperCase().includes('AM');
+          const parts = cleanTime.split(':');
+          let h = parseInt(parts[0]) || 0;
+          let m = parseInt(parts[1]) || 0;
+          let sec = parseInt(parts[2]) || 0;
+          if (isPM && h < 12) h += 12;
+          if (isAM && h === 12) h = 0;
+          const baseDate = dateContext ? new Date(dateContext.replace(/-/g, '/')) : new Date();
+          baseDate.setHours(h, m, sec, 0);
+          return baseDate;
+        } catch (e) { return null; }
+      };
+      const inDate = parse(inStr);
+      if (!inDate) return 0;
+      const totalMinutes = inDate.getHours() * 60 + inDate.getMinutes();
+      const officialStartTime = 10 * 60; // 10:00 AM
+      const graceTimeThreshold = 10 * 60 + 10; // 10:10 AM
+      return totalMinutes > graceTimeThreshold ? totalMinutes - officialStartTime : 0;
+    } catch (e) { return 0; }
   };
 
   const formatSecsToDuration = (totalSecs) => {
@@ -142,10 +244,16 @@ const MyAttendance = () => {
   const formatSheetTime = (timeStr) => {
     if (!timeStr || timeStr === '-' || timeStr === '0.0' || timeStr === '0') return timeStr;
     try {
-      // Handle "1899-12-30T..." or simple "09:00:00"
-      const date = new Date(timeStr.toString().includes('T') ? timeStr : `1970-01-01T${timeStr}`);
+      let extractedTime = timeStr.toString();
+      if (extractedTime.includes(' ')) {
+        const parts = extractedTime.split(' ');
+        extractedTime = parts[parts.length - 1];
+      } else if (extractedTime.includes('T')) {
+        extractedTime = extractedTime.split('T')[1].split('.')[0].replace('Z', '');
+      }
+
+      const date = new Date(`1970-01-01T${extractedTime}`);
       if (isNaN(date.getTime())) {
-        // Fallback for duration-like strings "9.30"
         return timeStr;
       }
       return date.toLocaleTimeString('en-US', {
@@ -166,76 +274,150 @@ const MyAttendance = () => {
     try {
       const userData = localStorage.getItem('user');
       const user = userData ? JSON.parse(userData) : {};
-      // Strictly match using the logged-in user's Name or Username
       const loggedInName = (user.Name || user.name || '').toString().trim().toLowerCase();
-      const loggedInUsername = (user.Username || user.username || '').toString().trim().toLowerCase();
+      const loggedInCode = (user.Username || user.username || '').toString().trim().toLowerCase();
 
-      // UPDATED SCRIPT URL AND SPREADSHEET ID
-      const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby1QHKttecIhZwoyh8-xo_wzqHgxIuFr9Tci8L803T1q0nKkjA1w26soUXSffkMY4E0sQ/exec';
+      // 1. Fetch Mapping Data
+      const [jRes, dmRes] = await Promise.all([
+        fetch(JOINING_API_URL).then(r => r.json()),
+        fetch(MASTER_MAP_URL).then(r => r.json())
+      ]);
 
-      const SPREADSHEET_ID = '1lg8cvRaYHpnR75bWxHoh-a30-gGL94-_WAnE7Zue6r8';
+      let currentJoining = [];
+      if (jRes.success) {
+        const rawRows = jRes.data || jRes;
+        const headers = rawRows[5];
+        const dataRows = rawRows.slice(6);
+        const getIdx = (name) => headers.findIndex(h => h && h.toString().trim().toLowerCase() === name.toLowerCase());
+        currentJoining = dataRows.map(r => ({
+          id: r[getIdx('Employee ID')]?.toString().trim(),
+          name: r[getIdx('Name As Per Aadhar')]?.toString().trim(),
+          designation: r[getIdx('Designation')]?.toString().trim()
+        })).filter(h => h.id);
+      }
 
-      const response = await fetch(
-        `${SCRIPT_URL}?sheet=Data&action=fetch&spreadsheetId=${SPREADSHEET_ID}`
+      let currentMapping = [];
+      if (dmRes.success) {
+        currentMapping = dmRes.data.slice(1).map(r => ({
+          userId: r[5]?.toString().trim(),
+          name: r[6]?.toString().trim(),
+          storeName: r[9]?.toString().trim()
+        }));
+      }
+
+      // 2. Fetch Live Device Logs
+      const yearNum = parseInt(selectedYear);
+      const monthIdx = monthNames.indexOf(selectedMonth);
+      const paddedMonth = (monthIdx + 1).toString().padStart(2, '0');
+      const lastDay = getDaysInMonth(monthIdx + 1, yearNum);
+
+      const queryStart = `${yearNum}-${paddedMonth}-01`;
+      const queryEnd = `${yearNum}-${paddedMonth}-${lastDay}`;
+
+      const allResponses = await Promise.all(
+        DEVICES.map(async (device) => {
+          try {
+            const url = `/api/device-logs?APIKey=211616032630&SerialNumber=${device.serial}&DeviceName=${device.apiName}&FromDate=${queryStart}&ToDate=${queryEnd}`;
+            const res = await fetch(url);
+            return res.ok ? await res.json() : [];
+          } catch (e) { return []; }
+        })
       );
 
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const result = await response.json();
-      if (!result.success) throw new Error(result.error || 'Failed to fetch attendance data');
+      const rawLogs = allResponses.flat();
+      const filteredLogs = rawLogs.filter(log => log.LogDate && log.LogDate.split(' ')[0] >= '2026-04-01');
 
-      const rawData = result.data || result;
-      if (!Array.isArray(rawData)) throw new Error('Expected array data not received');
-
-      const dataRows = rawData.length > 1 ? rawData.slice(1) : [];
-
-      const processedData = dataRows.map((row) => ({
-        employeeCode: row[0] || '',
-        employeeName: row[1] || '',
-        date: row[2] || '',
-        inTime: row[3] || '',
-        outTime: row[4] || '',
-        totalDuration: row[5] || '0',
-        totalWithLunchDuration: row[6] || '0',
-        lunchTime: row[7] || '0',
-        actualTotalDuration: row[8] || '0',
-        status: row[9] || '',
-        missAdjustCondition: row[10] || '',
-        month: row[12] || '',
-        year: row[11] || '',
-        dateKey: row[2] ? (new Date(row[2]).toISOString().split('T')[0]) : '' // Standardized YYYY-MM-DD for deduplication
-      })).filter(record => {
-        const rowEmployeeCode = record.employeeCode.toString().trim().toLowerCase();
-        const rowEmployeeName = record.employeeName.toString().trim().toLowerCase();
-
-        // Priority match by Name
-        if (loggedInName && rowEmployeeName === loggedInName) return true;
-
-        // Fallback match by Employee Code / Username
-        if (loggedInUsername && rowEmployeeCode === loggedInUsername) return true;
-
-        return false;
+      // 3. Process and Aggregate
+      const grouped = {};
+      filteredLogs.forEach(log => {
+        if (!log.EmployeeCode || !log.LogDate) return;
+        const dateStr = log.LogDate.split(' ')[0];
+        const key = `${log.EmployeeCode}_${dateStr}`;
+        if (!grouped[key]) grouped[key] = { id: log.EmployeeCode.toString().trim(), date: dateStr, logs: [] };
+        grouped[key].logs.push(log.LogDate);
       });
 
-      if (processedData.length > 0) {
-        setAttendanceData(processedData);
-        setIsDemo(false);
-        // Default to latest available month/year in data
-        setSelectedMonth(processedData[0].month);
-        setSelectedYear(processedData[0].year);
-      } else {
-        console.warn('No matching attendance records found for logged in user.');
-        setAttendanceData(DUMMY_ATTENDANCE);
-        setIsDemo(true);
-        setSelectedMonth('April');
-        setSelectedYear('2024');
-      }
+      const processedData = Object.values(grouped).map(group => {
+        const logs = group.logs;
+        logs.sort();
+
+        let inTime = '-';
+        let outTime = '-';
+        let punchMiss = 'No';
+
+        if (logs.length === 1) {
+          const punchTime = logs[0];
+          const hours = parseInt(punchTime.split(' ')[1]?.split(':')[0]) || 0;
+          punchMiss = 'Yes';
+          if (hours >= 15) outTime = punchTime;
+          else inTime = punchTime;
+        } else {
+          inTime = logs[0];
+          outTime = logs[logs.length - 1];
+        }
+
+        const code = group.id;
+        const empMeta = currentJoining.find(e => (e.id && e.id.toLowerCase() === code.toLowerCase()) || (e.name && e.name.toLowerCase() === code.toLowerCase()));
+        let dMap = currentMapping.find(m => (m.userId && m.userId.toString().toLowerCase() === code.toLowerCase()) || (m.name && m.name.toString().toLowerCase() === (empMeta?.name || code).toLowerCase()));
+
+        const displayName = dMap ? dMap.name : (empMeta ? empMeta.name : code);
+        const displayCode = dMap ? dMap.userId : (empMeta ? empMeta.id : code);
+
+        const workHrs = punchMiss === 'Yes' ? '00:00:00' : calculateWorkHours(inTime, outTime, group.date);
+        const lateMins = calculateLateMinutesLive(inTime, group.date);
+
+        // Lunch Calculation (Same as Admin)
+        let actualLunchMs = 0;
+        if (logs.length > 2) {
+          for (let i = 1; i < logs.length - 1; i += 2) {
+            const lOut = new Date(logs[i].replace(/-/g, '/'));
+            const lIn = new Date(logs[i + 1].replace(/-/g, '/'));
+            actualLunchMs += Math.max(0, lIn - lOut);
+          }
+        }
+        const standardLunchMs = 2.5 * 3600 * 1000;
+        const displayLunchMs = Math.min(actualLunchMs, standardLunchMs);
+
+        let finalStatus = 'Present';
+        if (punchMiss === 'Yes') {
+          finalStatus = 'Absent';
+        } else {
+          const parts = workHrs.split(':');
+          const h = parseInt(parts[0]) || 0;
+          if (h < 8) {
+            finalStatus = 'Absent';
+          }
+        }
+
+        return {
+          employeeCode: displayCode,
+          employeeName: displayName,
+          date: group.date,
+          dateKey: group.date,
+          inTime: inTime,
+          outTime: outTime,
+          lateMinutes: lateMins > 0 ? (Math.floor(lateMins / 60) > 0 ? `${Math.floor(lateMins / 60)}h ${lateMins % 60}m` : `${lateMins}m`) : '-',
+          totalWithLunchDuration: workHrs,
+          lunchTime: calculateHoursMins(displayLunchMs),
+          status: finalStatus,
+          month: selectedMonth,
+          year: selectedYear,
+          punchMiss: punchMiss === 'Yes'
+        };
+      }).filter(record => {
+        const rowEmployeeCode = record.employeeCode.toString().trim().toLowerCase();
+        const rowEmployeeName = record.employeeName.toString().trim().toLowerCase();
+        return (loggedInName && rowEmployeeName === loggedInName) || (loggedInCode && rowEmployeeCode === loggedInCode);
+      });
+
+      setAttendanceData(processedData.length > 0 ? processedData : DUMMY_ATTENDANCE);
+      setIsDemo(processedData.length === 0);
+
     } catch (error) {
       console.error('Error fetching data:', error);
       setError(error.message);
       setAttendanceData(DUMMY_ATTENDANCE);
       setIsDemo(true);
-      setSelectedMonth('April');
-      setSelectedYear('2024');
     } finally {
       setLoading(false);
     }
@@ -249,11 +431,6 @@ const MyAttendance = () => {
     (selectedMonth === '' || record.month.toString().toLowerCase() === selectedMonth.toLowerCase()) &&
     (selectedYear === '' || record.year.toString() === selectedYear.toString())
   );
-
-  // --- NEW LOGIC: Deduplicated Present/Absent calculation ---
-  const today = new Date();
-  const currentMonthName = monthNames[today.getMonth()];
-  const currentYearStr = today.getFullYear().toString();
 
   // Deduplicate by date: each unique date only counts once
   const uniqueDates = [...new Map(filteredAttendance.map(item => [item.dateKey || item.date, item])).values()];
@@ -280,100 +457,64 @@ const MyAttendance = () => {
   // --- CONSOLIDATION FOR TABLE DISPLAY ---
   const consolidatedByDate = filteredAttendance.reduce((acc, curr) => {
     const key = curr.dateKey || curr.date;
-    if (!acc[key]) {
-      acc[key] = { ...curr };
-      return acc;
-    }
-    const combined = acc[key];
-
-    // Compare and update In/Out times
-    const currIn = timeToSeconds(curr.inTime);
-    const combIn = timeToSeconds(combined.inTime);
-    if (currIn > 0 && (combIn === 0 || currIn < combIn)) {
-      combined.inTime = curr.inTime;
-    }
-
-    const currOut = timeToSeconds(curr.outTime);
-    const combOut = timeToSeconds(combined.outTime);
-    if (currOut > 0 && currOut > combOut) {
-      combined.outTime = curr.outTime;
-    }
-
-    // Sum durations
-    const currLunch = durationToSecs(curr.lunchTime);
-    const combLunch = durationToSecs(combined.lunchTime);
-    combined.lunchTime = formatSecsToDuration(combLunch + currLunch);
-
-    const currTotal = durationToSecs(curr.totalDuration);
-    const combTotal = durationToSecs(combined.totalDuration);
-    combined.totalDuration = formatSecsToDuration(combTotal + currTotal);
-
-    const currWithLunch = durationToSecs(curr.totalWithLunchDuration);
-    const combWithLunch = durationToSecs(combined.totalWithLunchDuration);
-    combined.totalWithLunchDuration = formatSecsToDuration(combWithLunch + currWithLunch);
-
-    const currActual = durationToSecs(curr.actualTotalDuration);
-    const combActual = durationToSecs(combined.actualTotalDuration);
-    combined.actualTotalDuration = formatSecsToDuration(combActual + currActual);
-
-    // Status preference
-    if (curr.status.trim().toLowerCase() === 'present') {
-      combined.status = 'Present';
-    }
-
+    acc[key] = { ...curr };
     return acc;
   }, {});
 
-  // Post-process consolidation to handle Punch Miss and 8-Hour Rule logic
-  Object.values(consolidatedByDate).forEach(record => {
-    const inSecs = timeToSeconds(record.inTime);
-    const outSecs = timeToSeconds(record.outTime);
-    const actualSecs = durationToSecs(record.actualTotalDuration);
+  const displayAttendance = [];
+  if (selectedMonth && selectedYear) {
+    const yearNum = parseInt(selectedYear);
+    const monthIdx = monthNames.indexOf(selectedMonth);
+    const daysInMonth = getDaysInMonth(monthIdx + 1, yearNum);
 
-    // STRICT check: only missing if effectively 0 AND literal string is empty or '-'
-    const hasIn = inSecs > 0 || (record.inTime && record.inTime !== '-' && record.inTime !== '0');
-    const hasOut = outSecs > 0 || (record.outTime && record.outTime !== '-' && record.outTime !== '0');
+    // Determine how many days to show: 
+    // If current month/year, show up to today. If past, show full month.
+    const isCurrentMonth = selectedMonth.toString().toLowerCase() === currentMonthName.toLowerCase();
+    const isCurrentYear = selectedYear.toString() === currentYearStr;
+    const maxDay = (isCurrentMonth && isCurrentYear) ? today.getDate() : daysInMonth;
 
-    const isHoliday = record.status.trim().toLowerCase() === 'holiday' || record.status.trim().toLowerCase() === 'leave';
+    // Get fallback employee info from localStorage
+    const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const fallbackName = savedUser.Name || savedUser.name || '-';
+    const fallbackCode = savedUser.Username || savedUser.username || '-';
 
-    if (!isHoliday) {
-      if (!hasIn || !hasOut) {
-        record.status = 'Absent';
-        record.punchMiss = true;
-        if (!hasIn && hasOut) {
-          record.punchMissReason = 'In Time Punch Miss';
-        } else if (!hasOut && hasIn) {
-          record.punchMissReason = 'Out Time Punch Miss';
-        } else {
-          record.punchMissReason = 'Punch Miss';
-        }
-      } else if (actualSecs < 8 * 3600) {
-        // Less than 8 hours work rule
-        record.status = 'Absent';
-        record.punchMiss = true;
-        record.punchMissReason = 'Under 8 Hours Shift';
+    for (let d = 1; d <= maxDay; d++) {
+      const dateKey = `${yearNum}-${(monthIdx + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+
+      if (consolidatedByDate[dateKey]) {
+        displayAttendance.push(consolidatedByDate[dateKey]);
       } else {
-        // Full shift worked
-        record.status = 'Present';
-        record.punchMiss = false;
-        record.punchMissReason = '';
+        // Find employee info from any available record
+        const empInfo = filteredAttendance[0] || {};
+        displayAttendance.push({
+          employeeCode: empInfo.employeeCode || fallbackCode,
+          employeeName: empInfo.employeeName || fallbackName,
+          date: `${d.toString().padStart(2, '0')}/${(monthIdx + 1).toString().padStart(2, '0')}/${yearNum}`,
+          dateKey: dateKey,
+          inTime: '-',
+          outTime: '-',
+          lateMinutes: '-',
+          totalWithLunchDuration: '-',
+          lunchTime: '-',
+          status: 'Absent',
+          month: selectedMonth,
+          year: selectedYear,
+          punchMiss: false
+        });
       }
     }
-  });
+  }
 
-  const displayAttendance = Object.values(consolidatedByDate).sort((a, b) => {
-    const da = new Date(a.dateKey || a.date);
-    const db = new Date(b.dateKey || b.date);
-    return da - db;
-  });
+  // Sort by date just in case
+  displayAttendance.sort((a, b) => new Date(a.dateKey).getTime() - new Date(b.dateKey).getTime());
 
-  // Calculate final dashboard stats after consolidation and Punch Miss logic
+  // Calculate final dashboard stats
   const presentDays = displayAttendance.filter(r => r.status.trim().toLowerCase() === 'present').length;
-  const absentDays = Math.max(0, totalDaysInRange - presentDays);
-  const totalDays = displayAttendance.length; // Now reflects unique days
+  const absentDays = displayAttendance.filter(r => r.status.trim().toLowerCase() === 'absent').length;
+  const totalDays = displayAttendance.length;
 
   const totalSecs = filteredAttendance.reduce((sum, r) => {
-    return sum + durationToSecs(r.actualTotalDuration);
+    return sum + durationToSecs(r.totalWithLunchDuration || '00:00:00');
   }, 0);
   const totalDurationFormatted = formatSecsToDuration(totalSecs);
 
@@ -439,7 +580,7 @@ const MyAttendance = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Present Days" value={presentDays} icon={CheckCircle2} colorClass="bg-green-500" />
         <StatCard title="Absent Days" value={absentDays} icon={XCircle} colorClass="bg-red-500" />
-        <StatCard title="Total Duration" value={totalDurationFormatted} icon={Clock} colorClass="bg-indigo-500" />
+        <StatCard title="Work Duration" value={totalDurationFormatted} icon={Clock} colorClass="bg-indigo-500" />
         <StatCard title="Total Records" value={totalDays} icon={FileText} colorClass="bg-blue-500" />
       </div>
 
@@ -463,10 +604,9 @@ const MyAttendance = () => {
                 <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Date</th>
                 <th className="bg-white px-6 py-4 border-b border-gray-100 text-green-600 whitespace-nowrap">IN Time</th>
                 <th className="bg-white px-6 py-4 border-b border-gray-100 text-red-600 whitespace-nowrap">OUT Time</th>
-                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Total Duration</th>
+                <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Late Minute</th>
                 <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Total With Lunch Duration</th>
                 <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Lunch Time</th>
-                <th className="bg-white px-6 py-4 border-b border-gray-100 text-indigo-600 whitespace-nowrap">Actual</th>
                 <th className="bg-white px-6 py-4 border-b border-gray-100 whitespace-nowrap">Status</th>
               </tr>
             </thead>
@@ -497,18 +637,18 @@ const MyAttendance = () => {
                   <td className="px-6 py-5 text-sm text-gray-500 font-bold">{formatSheetDate(record.date)}</td>
                   <td className="px-6 py-5 text-sm text-green-600 font-bold">{formatSheetTime(record.inTime)}</td>
                   <td className="px-6 py-5 text-sm text-red-600 font-bold">{formatSheetTime(record.outTime)}</td>
-                  <td className="px-6 py-5 text-sm text-gray-500 font-medium">{record.totalDuration}</td>
-                  <td className="px-6 py-5 text-sm text-gray-500 font-medium">{record.totalWithLunchDuration}</td>
+                  <td className="px-6 py-5 text-sm text-yellow-600 font-bold">{record.lateMinutes}</td>
+                  <td className="px-6 py-5 text-sm font-black text-indigo-600">{record.totalWithLunchDuration}</td>
                   <td className="px-6 py-5 text-xs text-amber-600 font-bold flex items-center gap-1 mt-4">
                     <Coffee size={12} /> {record.lunchTime}
                   </td>
-                  <td className="px-6 py-5 text-sm font-black text-indigo-600">{record.actualTotalDuration}</td>
                   <td className="px-6 py-5">
                     <span
                       title={record.punchMiss ? record.punchMissReason : ''}
-                      className={`px-3 py-1 text-[10px] font-black uppercase rounded-full cursor-help transition-all ${record.status.trim().toLowerCase() === 'present'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700 shadow-sm border border-red-200'
+                      className={`px-3 py-1 text-[10px] font-black uppercase rounded-full cursor-help transition-all shadow-sm border ${record.status.trim().toLowerCase() === 'present' ? 'bg-green-50 text-green-700 border-green-200' :
+                        record.status.trim().toLowerCase() === 'late' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                          record.status.trim().toLowerCase() === 'holiday' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                            'bg-red-50 text-red-700 border-red-200'
                         }`}
                     >
                       {record.status}
